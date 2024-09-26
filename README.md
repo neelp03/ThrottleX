@@ -28,7 +28,7 @@
 ## Installation and Setup (Planned)
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/your-username/throttlex.git
+   git clone https://github.com/neelp03/throttlex.git
    cd throttlex
    ```
 
