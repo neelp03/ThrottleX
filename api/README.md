@@ -51,8 +51,8 @@ graph TD;
 
    import (
        "github.com/gin-gonic/gin"
-       "throttlex/api/routes"
-       "throttlex/api/middleware"
+       "github.com/neelp03/throttlex/api/routes"
+       "github.com/neelp03/throttlex/api/middleware"
    )
 
    // Setup initializes the API with routes and middleware
@@ -78,7 +78,7 @@ graph TD;
 
    import (
        "github.com/gin-gonic/gin"
-       "throttlex/api/handlers"
+       "github.com/neelp03/throttlex/api/handlers"
    )
 
    // RegisterRoutes sets up all API routes
