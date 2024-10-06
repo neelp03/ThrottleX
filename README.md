@@ -1,56 +1,119 @@
 # ThrottleX
 
-**ThrottleX** is a high-performance, distributed rate-limiting solution built with **Go** and **Redis**, designed to manage and control API traffic across multiple instances. It is scalable, fault-tolerant, and optimized for both microservice and public API architectures. ThrottleX supports various rate-limiting policies to ensure system stability under heavy load, and it’s easily deployable using **Docker** and **Kubernetes**.
+**ThrottleX** is a high-performance, extensible Go library for rate limiting, designed to help you manage and control API traffic in your applications. It supports multiple rate-limiting algorithms and storage backends, making it suitable for a wide range of use cases, from single-server applications to distributed systems.
 
 ---
 
-## Features (Planned)
-- **Distributed Rate Limiting**: Efficiently manage API requests across multiple instances using Redis for distributed coordination.
-- **Multiple Policies**: Implement various rate-limiting strategies, such as fixed window, sliding window, and token bucket.
-- **Scalable Architecture**: Designed to run in distributed environments with Docker and Kubernetes.
-- **API Key Management**: Supports API key-based authentication and user-level rate limiting.
-- **Real-Time Monitoring**: Integration with Datadog, Prometheus, or Grafana for monitoring request traffic and system health.
-- **Detailed Logging**: Structured JSON logging with log levels for better debugging and observability.
+## Features
+
+- **Multiple Rate Limiting Algorithms**:
+  - **Fixed Window**
+  - **Sliding Window**
+  - **Token Bucket**
+
+- **Pluggable Storage Backends**:
+  - **Redis**: For distributed rate limiting across multiple instances.
+  - **In-Memory**: For simplicity or testing purposes.
+
+- **Easy Integration**:
+  - Designed to integrate seamlessly with **REST APIs**, **gRPC services**, and more.
+  - Provides clear interfaces and examples.
+
+- **High Performance**:
+  - Optimized algorithms for minimal latency.
+  - Thread-safe implementations suitable for concurrent environments.
+
+- **Extensible Design**:
+  - Implement your own storage backends by adhering to the `Store` interface.
+  - Customize rate-limiting parameters to fit your needs.
 
 ---
 
-## Tech Stack (Planned)
-- **Go**: Backend implementation.
-- **Redis**: For caching and distributed coordination.
-- **PostgreSQL**: For API key management (optional).
-- **Docker**: For containerization.
-- **Kubernetes (Minikube)**: For orchestration and scalability.
-- **Prometheus/Grafana**: For real-time monitoring (optional).
-- **Logrus**: For leveled JSON logging.
+## Installation
+
+Requires **Go 1.18** or newer.
+
+```bash
+go get github.com/neelp03/throttlex
+```
 
 ---
 
-## Installation and Setup (Planned)
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/neelp03/throttlex.git
-   cd throttlex
-   ```
+## Quick Start
 
-2. **Environment Setup**:
-   - Ensure you have Docker and Go installed.
-   - Set up Redis and PostgreSQL (if required).
-   - Future instructions for environment variables and configurations will be provided.
+### **Import the Library**
 
-3. **Build and Run**:
-   This section will contain detailed steps on building the application, running it locally, and testing it with Docker and Kubernetes.
+```go
+import (
+    "github.com/neelp03/throttlex/ratelimiter"
+    "github.com/neelp03/throttlex/store"
+)
+```
+
+### **Set Up a Rate Limiter**
+
+```go
+// Using an in-memory store
+memStore := store.NewMemoryStore()
+
+// Create a fixed window rate limiter
+limiter := ratelimiter.NewFixedWindowLimiter(memStore, 100, time.Minute)
+```
+
+### **Use in Your Application**
+
+```go
+allowed, err := limiter.Allow("user-unique-key")
+if err != nil {
+    // Handle error
+}
+
+if !allowed {
+    // Reject the request
+}
+```
 
 ---
 
-## Usage (Planned)
-ThrottleX will provide a REST API to configure rate limits and monitor API traffic. Example usage and API documentation (with OpenAPI/Swagger) will be added once the initial development is complete.
+## Examples
+
+### **REST API Integration**
+
+See [examples/rest_api/main.go](examples/rest_api/main.go) for a complete example using `net/http`.
+
+### **gRPC Integration**
+
+See [examples/grpc_api/main.go](examples/grpc_api/main.go) for how to use interceptors for rate limiting in gRPC.
+
+---
+
+## Documentation
+
+- **[API Reference](https://pkg.go.dev/github.com/neelp03/throttlex)**: Full documentation of the library.
+- **[Examples](examples/)**: Practical examples to help you get started.
 
 ---
 
 ## Contributing
-Currently, this is a personal project in the early stages of development. Contributions and feature requests are welcome as the project progresses.
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
 ## License
-This project will be released under the **Apache 2.0**. Please see the LICENSE file.
+
+This project is licensed under the **Apache 2.0** License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## Contact
+
+For questions or support, please open an issue on the GitHub repository.
+
+---
+
+## **Final Suggestions**
+
+- **Keep the Focus on the Library**: Since you're creating a package for others to use, emphasize ease of integration and flexibility.
+- **Provide Excellent Documentation**: The success of a library often hinges on how easy it is for others to understand and use it.
+- **Encourage Community Engagement**: Foster an open-source community around your project for continuous improvement and adoption.
