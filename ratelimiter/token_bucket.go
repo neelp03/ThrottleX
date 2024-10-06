@@ -45,8 +45,8 @@ func NewTokenBucketLimiter(store store.Store, capacity, refillRate float64) *Tok
 // If no mutex exists, it creates one.
 func (l *TokenBucketLimiter) getMutex(key string) *keyMutex {
 	mutexInterface, _ := l.mutexes.LoadOrStore(key, &keyMutex{
-			mu:         &sync.Mutex{},
-			lastAccess: time.Now(),
+		mu:         &sync.Mutex{},
+		lastAccess: time.Now(),
 	})
 	return mutexInterface.(*keyMutex)
 }
@@ -71,20 +71,20 @@ func (l *TokenBucketLimiter) Allow(key string) (bool, error) {
 	// Retrieve the current token bucket state
 	state, err := l.store.GetTokenBucket(key)
 	if err != nil {
-			return false, err
+		return false, err
 	}
 
 	if state == nil {
-			// Initialize a new token bucket state
-			state = &store.TokenBucketState{
-					Tokens:         l.capacity - 1, // Consume one token
-					LastUpdateTime: now,
-			}
-			err = l.store.SetTokenBucket(key, state, time.Hour*24) // Set expiration as needed
-			if err != nil {
-					return false, err
-			}
-			return true, nil // Request is allowed
+		// Initialize a new token bucket state
+		state = &store.TokenBucketState{
+			Tokens:         l.capacity - 1, // Consume one token
+			LastUpdateTime: now,
+		}
+		err = l.store.SetTokenBucket(key, state, time.Hour*24) // Set expiration as needed
+		if err != nil {
+			return false, err
+		}
+		return true, nil // Request is allowed
 	}
 
 	// Refill tokens based on the elapsed time
@@ -94,19 +94,19 @@ func (l *TokenBucketLimiter) Allow(key string) (bool, error) {
 	state.LastUpdateTime = now
 
 	if state.Tokens >= 1 {
-			// Consume a token
-			state.Tokens -= 1
-			err = l.store.SetTokenBucket(key, state, time.Hour*24)
-			if err != nil {
-					return false, err
-			}
-			return true, nil // Request is allowed
+		// Consume a token
+		state.Tokens -= 1
+		err = l.store.SetTokenBucket(key, state, time.Hour*24)
+		if err != nil {
+			return false, err
+		}
+		return true, nil // Request is allowed
 	}
 
 	// Not enough tokens
 	err = l.store.SetTokenBucket(key, state, time.Hour*24)
 	if err != nil {
-			return false, err
+		return false, err
 	}
 	return false, nil // Rate limit exceeded
 }
@@ -115,24 +115,24 @@ func (l *TokenBucketLimiter) Allow(key string) (bool, error) {
 func (l *TokenBucketLimiter) startMutexCleanup() {
 	l.cleanupTicker = time.NewTicker(l.cleanupInterval)
 	for {
-			select {
-			case <-l.cleanupTicker.C:
-					now := time.Now()
-					l.mutexes.Range(func(key, value interface{}) bool {
-							km := value.(*keyMutex)
-							km.mu.Lock()
-							if now.Sub(km.lastAccess) > l.cleanupInterval*2 {
-									km.mu.Unlock()
-									l.mutexes.Delete(key)
-							} else {
-									km.mu.Unlock()
-							}
-							return true
-					})
-			case <-l.cleanupStopCh:
-					l.cleanupTicker.Stop()
-					return
-			}
+		select {
+		case <-l.cleanupTicker.C:
+			now := time.Now()
+			l.mutexes.Range(func(key, value interface{}) bool {
+				km := value.(*keyMutex)
+				km.mu.Lock()
+				if now.Sub(km.lastAccess) > l.cleanupInterval*2 {
+					km.mu.Unlock()
+					l.mutexes.Delete(key)
+				} else {
+					km.mu.Unlock()
+				}
+				return true
+			})
+		case <-l.cleanupStopCh:
+			l.cleanupTicker.Stop()
+			return
+		}
 	}
 }
 
@@ -144,7 +144,7 @@ func (l *TokenBucketLimiter) StopCleanup() {
 // min returns the smaller of two float64 numbers.
 func min(a, b float64) float64 {
 	if a < b {
-			return a
+		return a
 	}
 	return b
 }

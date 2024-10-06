@@ -1,10 +1,10 @@
 package ratelimiter
 
 import (
-    "sync"
-    "time"
+	"sync"
+	"time"
 
-    "github.com/neelp03/throttlex/store"
+	"github.com/neelp03/throttlex/store"
 )
 
 // SlidingWindowLimiter implements the sliding window rate-limiting algorithm.
@@ -21,12 +21,12 @@ type SlidingWindowLimiter struct {
 // NewSlidingWindowLimiter creates a new instance of SlidingWindowLimiter.
 func NewSlidingWindowLimiter(store store.Store, limit int, window time.Duration) *SlidingWindowLimiter {
 	limiter := &SlidingWindowLimiter{
-			store:           store,
-			limit:           limit,
-			window:          window,
-			mutexes:         sync.Map{},
-			cleanupInterval: time.Minute * 5,
-			cleanupStopCh:   make(chan struct{}),
+		store:           store,
+		limit:           limit,
+		window:          window,
+		mutexes:         sync.Map{},
+		cleanupInterval: time.Minute * 5,
+		cleanupStopCh:   make(chan struct{}),
 	}
 	go limiter.startMutexCleanup()
 	return limiter
@@ -35,8 +35,8 @@ func NewSlidingWindowLimiter(store store.Store, limit int, window time.Duration)
 // getMutex returns the mutex associated with the key.
 func (l *SlidingWindowLimiter) getMutex(key string) *keyMutex {
 	mutexInterface, _ := l.mutexes.LoadOrStore(key, &keyMutex{
-			mu:         &sync.Mutex{},
-			lastAccess: time.Now(),
+		mu:         &sync.Mutex{},
+		lastAccess: time.Now(),
 	})
 	return mutexInterface.(*keyMutex)
 }
@@ -54,13 +54,13 @@ func (l *SlidingWindowLimiter) Allow(key string) (bool, error) {
 	// Add the current timestamp to the list of timestamps for this key
 	err := l.store.AddTimestamp(key, now, l.window)
 	if err != nil {
-			return false, err
+		return false, err
 	}
 
 	// Count the number of timestamps within the window
 	count, err := l.store.CountTimestamps(key, windowStart, now)
 	if err != nil {
-			return false, err
+		return false, err
 	}
 
 	allowed := count <= int64(l.limit)
@@ -72,24 +72,24 @@ func (l *SlidingWindowLimiter) Allow(key string) (bool, error) {
 func (l *SlidingWindowLimiter) startMutexCleanup() {
 	l.cleanupTicker = time.NewTicker(l.cleanupInterval)
 	for {
-			select {
-			case <-l.cleanupTicker.C:
-					now := time.Now()
-					l.mutexes.Range(func(key, value interface{}) bool {
-							km := value.(*keyMutex)
-							km.mu.Lock()
-							if now.Sub(km.lastAccess) > l.cleanupInterval*2 {
-									km.mu.Unlock()
-									l.mutexes.Delete(key)
-							} else {
-									km.mu.Unlock()
-							}
-							return true
-					})
-			case <-l.cleanupStopCh:
-					l.cleanupTicker.Stop()
-					return
-			}
+		select {
+		case <-l.cleanupTicker.C:
+			now := time.Now()
+			l.mutexes.Range(func(key, value interface{}) bool {
+				km := value.(*keyMutex)
+				km.mu.Lock()
+				if now.Sub(km.lastAccess) > l.cleanupInterval*2 {
+					km.mu.Unlock()
+					l.mutexes.Delete(key)
+				} else {
+					km.mu.Unlock()
+				}
+				return true
+			})
+		case <-l.cleanupStopCh:
+			l.cleanupTicker.Stop()
+			return
+		}
 	}
 }
 
