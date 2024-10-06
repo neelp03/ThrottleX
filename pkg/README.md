@@ -148,7 +148,7 @@ graph TD;
 
    **Example**:
    ```go
-   import "throttlex/pkg/ratelimiter"
+   import "github.com/neelp03/throttlex/pkg/ratelimiter"
 
    allowed, err := ratelimiter.FixedWindowLimiter(ctx, redisClient, apiKey, 100, time.Minute)
    if err != nil {
@@ -164,7 +164,7 @@ graph TD;
    
    **Example**:
    ```go
-   import "throttlex/pkg/utils"
+   import "github.com/neelp03/throttlex/pkg/utils"
 
    utils.InitializeLogger("debug")
    utils.LogError("Failed to process request", err)
@@ -175,7 +175,7 @@ graph TD;
    
    **Example**:
    ```go
-   import "throttlex/pkg/database"
+   import "github.com/neelp03/throttlex/pkg/database"
 
    redisClient := database.InitializeRedis("localhost:6379", "", 0)
    ```
