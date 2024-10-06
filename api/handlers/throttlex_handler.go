@@ -6,12 +6,12 @@ import (
     "github.com/neelp03/throttlex/pkg/ratelimiter"
     "github.com/gin-gonic/gin"
     "github.com/neelp03/throttlex/pkg/database"
-    "time"
+    "github.com/neelp03/throttlex/pkg/utils" // For logging
 )
 
-// limiter is a rate limiter instance initialized with a fixed window algorithm.
-// It allows up to 100 requests per minute, stored in Redis for efficient management.
-var limiter = ratelimiter.NewFixedWindowLimiter(database.RedisClient, 100, time.Minute)
+// limiter is a rate limiter instance initialized with the fixed window algorithm.
+// It allows a configurable number of requests per minute, with values set via environment variables.
+var limiter = ratelimiter.NewFixedWindowLimiter(database.RedisClient)
 
 // CheckRateLimit handles GET requests to the /api/throttlex/check endpoint.
 //
@@ -41,17 +41,20 @@ func CheckRateLimit(c *gin.Context) {
     // Perform rate-limiting check using the provided API key
     allowed, err := limiter.Allow(context.Background(), apiKey)
     if err != nil {
-        // Return a 500 error if an issue occurs during rate-limiting check
+        // Log and return a 500 error if an issue occurs during rate-limiting check
+        utils.LogError("Error checking rate limit for key: "+apiKey, err)
         c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
         return
     }
 
     if !allowed {
-        // Return a 429 error if the rate limit has been exceeded
+        // Log and return a 429 error if the rate limit has been exceeded
+        utils.LogInfo("Rate limit exceeded for key: " + apiKey)
         c.JSON(http.StatusTooManyRequests, gin.H{"error": "Rate limit exceeded"})
         return
     }
 
-    // Return a 200 status if the request is allowed
+    // Log and return a 200 status if the request is allowed
+    utils.LogInfo("Request allowed for key: " + apiKey)
     c.JSON(http.StatusOK, gin.H{"message": "Request allowed"})
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/neelp03/throttlex/api"
 	"github.com/neelp03/throttlex/config"
 	"github.com/neelp03/throttlex/pkg/database"
+	"github.com/neelp03/throttlex/pkg/metrics"
 	"github.com/neelp03/throttlex/pkg/utils"
 )
 
@@ -19,6 +20,12 @@ func main() {
 
 	// Initialize Redis
 	database.InitializeRedis()
+
+	// Register Prometheus metrics
+	metrics.RegisterMetrics()
+
+	// Expose Prometheus metrics at /metrics
+	metrics.ExposeMetrics()
 
 	// Start API server
 	router := api.Setup()

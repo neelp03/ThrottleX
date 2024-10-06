@@ -4,6 +4,7 @@ import (
     "context"
     "testing"
     "time"
+    "os"
     "github.com/go-redis/redismock/v8"  // Mocking Redis interactions
     "github.com/neelp03/throttlex/pkg/ratelimiter"
 )
@@ -27,11 +28,15 @@ import (
 // Example usage:
 //   go test -v ./pkg/ratelimiter/test
 func TestFixedWindowLimiter(t *testing.T) {
+    // Set environment variables for limit and window duration
+    os.Setenv("LIMIT", "5")
+    os.Setenv("WINDOW", "60") // 60 seconds (1 minute)
+
     // Set up a mock Redis client for simulating Redis interactions.
     redisClient, mock := redismock.NewClientMock()
 
-    // Initialize a Fixed Window Rate Limiter with a limit of 5 requests per minute.
-    limiter := ratelimiter.NewFixedWindowLimiter(redisClient, 5, time.Minute)
+    // Initialize a Fixed Window Rate Limiter (configured via environment variables).
+    limiter := ratelimiter.NewFixedWindowLimiter(redisClient)
 
     key := "test-key"
 

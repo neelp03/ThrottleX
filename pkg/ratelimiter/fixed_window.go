@@ -2,42 +2,60 @@ package ratelimiter
 
 import (
     "context"
-    "github.com/go-redis/redis/v8"
     "time"
+    "os"
+    "strconv"
+    "github.com/go-redis/redis/v8"
+    "github.com/neelp03/throttlex/pkg/utils"  // For logging
+    "github.com/neelp03/throttlex/pkg/metrics" // For Prometheus metrics
 )
 
-// FixedWindowLimiter is a rate limiter that uses the fixed window algorithm.
+// FixedWindowLimiter is a rate limiter that implements the fixed window algorithm.
 //
-// It tracks requests using Redis and allows up to a specified number of requests
-// within a given time window. Once the limit is reached, additional requests
-// within the same time window are denied.
+// The rate limiter uses Redis to track the number of requests per key within a defined
+// time window. If the number of requests exceeds the specified limit within the window,
+// subsequent requests are denied until the window resets.
 //
 // Fields:
-//   - redisClient: The Redis client used for tracking request counts.
-//   - limit: The maximum number of requests allowed per time window.
-//   - window: The duration of the time window during which requests are counted.
+//   - redisClient: Redis client for managing request counts.
+//   - limit: Maximum allowed requests within the window.
+//   - window: Time duration of the rate-limiting window.
 type FixedWindowLimiter struct {
     redisClient *redis.Client
-    limit       int           // max requests allowed
-    window      time.Duration // duration of the fixed window
+    limit       int
+    window      time.Duration
 }
 
-// NewFixedWindowLimiter initializes a new FixedWindowLimiter instance.
+// NewFixedWindowLimiter initializes a new FixedWindowLimiter.
 //
-// This function creates a new rate limiter using the fixed window algorithm,
-// which counts the number of requests within a specified time window.
+// The rate limit and window duration can be configured via environment variables. If the
+// environment variables are not set, default values are used (100 requests per minute).
+//
+// Environment Variables:
+//   - LIMIT: Maximum number of requests allowed (default: 100).
+//   - WINDOW: Time window duration in seconds (default: 60 seconds).
 //
 // Params:
-//   - redisClient: *redis.Client - The Redis client for tracking request counts.
-//   - limit: int - The maximum number of requests allowed within the window.
-//   - window: time.Duration - The time window duration for counting requests.
+//   - redisClient: *redis.Client - Redis client for managing request counts.
 //
 // Returns:
-//   *FixedWindowLimiter - A new FixedWindowLimiter instance.
+//   *FixedWindowLimiter - A new instance of FixedWindowLimiter.
 //
 // Example usage:
-//   limiter := ratelimiter.NewFixedWindowLimiter(redisClient, 100, time.Minute)
-func NewFixedWindowLimiter(redisClient *redis.Client, limit int, window time.Duration) *FixedWindowLimiter {
+//   limiter := ratelimiter.NewFixedWindowLimiter(redisClient)
+func NewFixedWindowLimiter(redisClient *redis.Client) *FixedWindowLimiter {
+    // Fetch the rate limit and window size from environment variables, with default values
+    limit, err := strconv.Atoi(os.Getenv("LIMIT"))
+    if err != nil {
+        limit = 100 // Default: 100 requests
+    }
+
+    windowSeconds, err := strconv.Atoi(os.Getenv("WINDOW"))
+    if err != nil {
+        windowSeconds = 60 // Default: 60 seconds
+    }
+    window := time.Duration(windowSeconds) * time.Second
+
     return &FixedWindowLimiter{
         redisClient: redisClient,
         limit:       limit,
@@ -47,18 +65,20 @@ func NewFixedWindowLimiter(redisClient *redis.Client, limit int, window time.Dur
 
 // Allow checks if the request is allowed under the current rate limit.
 //
-// This method increments the request count for the given key (typically an API key or user identifier)
-// and determines if the request is allowed within the current fixed time window. If this is the first
-// request in the window, it sets the expiration on the Redis key to match the window duration.
-// If the limit is exceeded, the request is denied.
+// This method increments the request count for the provided key and determines
+// if the request is allowed within the current fixed time window. If the request
+// count exceeds the limit, the request is denied.
+//
+// It also logs rate limit breaches, sets Redis key expiration, and increments
+// Prometheus metrics for monitoring.
 //
 // Params:
-//   - ctx: context.Context - The context for the Redis operation.
-//   - key: string - The unique identifier (e.g., API key) for rate limiting.
+//   - ctx: context.Context - Context for managing request deadlines and cancellation.
+//   - key: string - The unique identifier (e.g., API key or user ID) to be rate-limited.
 //
 // Returns:
-//   bool - Whether the request is allowed (true) or denied (false).
-//   error - Any error that occurred while interacting with Redis.
+//   bool - True if the request is allowed, false if denied due to rate limit breach.
+//   error - Any error encountered while interacting with Redis.
 //
 // Example usage:
 //   allowed, err := limiter.Allow(ctx, "api-key")
@@ -66,27 +86,38 @@ func NewFixedWindowLimiter(redisClient *redis.Client, limit int, window time.Dur
 // Behavior:
 //   - If the request count exceeds the limit, it returns false (denied).
 //   - If the request is within the limit, it returns true (allowed).
-//   - On the first request in the time window, it sets the Redis key's expiration.
 func (limiter *FixedWindowLimiter) Allow(ctx context.Context, key string) (bool, error) {
-    // Construct the Redis key for rate limiting
     redisKey := "ratelimit:" + key
 
-    // Increment the request count for this key
+    // Increment the request count in Redis
     count, err := limiter.redisClient.Incr(ctx, redisKey).Result()
     if err != nil {
+        utils.LogError("Failed to increment Redis key", err)
         return false, err
     }
 
-    // Set expiration if this is the first request in the window
+    // Set expiration for the Redis key if this is the first request in the window
     if count == 1 {
-        limiter.redisClient.Expire(ctx, redisKey, limiter.window)
+        err := limiter.redisClient.Expire(ctx, redisKey, limiter.window).Err()
+        if err != nil {
+            utils.LogError("Failed to set expiration for Redis key", err)
+            return false, err
+        }
     }
 
-    // Deny the request if it exceeds the rate limit
+    // Log the current request count for monitoring purposes
+    utils.LogInfo("Request count for key " + key + ": " + strconv.FormatInt(count, 10))
+
+    // Increment the Prometheus total requests metric
+    metrics.TotalRequests.Inc()
+
+    // Deny the request if the count exceeds the rate limit
     if count > int64(limiter.limit) {
-        return false, nil // request denied
+        utils.LogInfo("Rate limit exceeded for key: " + key)
+        metrics.DeniedRequests.Inc() // Increment the denied requests metric
+        return false, nil
     }
 
-    // Allow the request if it's within the limit
-    return true, nil // request allowed
+    // Request allowed
+    return true, nil
 }
