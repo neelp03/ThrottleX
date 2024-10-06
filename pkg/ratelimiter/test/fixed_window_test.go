@@ -2,58 +2,76 @@ package test
 
 import (
     "context"
-    "github.com/go-redis/redis/v8"
     "testing"
     "time"
+    "github.com/go-redis/redismock/v8"  // Mocking Redis interactions
     "github.com/neelp03/throttlex/pkg/ratelimiter"
 )
 
 // TestFixedWindowLimiter validates the behavior of the Fixed Window Rate Limiter.
 //
-// This test sets up a rate limiter that allows 5 requests per minute and ensures
-// that the rate limiting logic works as expected. It checks whether the first 5 requests
-// are allowed and ensures that the 6th request is denied due to exceeding the limit.
+// This test uses a Redis mock to simulate interactions with Redis and ensures that
+// the rate limiting logic works as expected. The Fixed Window Rate Limiter allows
+// up to 5 requests per minute. The test checks whether requests are allowed or denied
+// based on the rate limit.
 //
-// The test is performed using a Redis client connected to localhost, so Redis must be running
-// locally for the test to pass.
+// Test cases covered:
+//   - First 5 requests are allowed.
+//   - The 6th request is denied due to exceeding the limit.
+//   - All Redis interactions are mocked using the redismock package.
 //
-// Steps:
-//   - Create a Redis client connected to "localhost:6379".
-//   - Initialize a Fixed Window Rate Limiter allowing 5 requests per minute.
-//   - Make 5 consecutive requests, all of which should be allowed.
-//   - Make a 6th request, which should be denied.
-//
-// Fatal Errors:
-//   The test will terminate early if there are any unexpected errors.
+// Redis Mocking:
+//   - The INCR command is mocked to return the current request count.
+//   - The EXPIRE command is mocked to simulate setting the expiration time on the rate limit key.
 //
 // Example usage:
-//   go test -v ./test
+//   go test -v ./pkg/ratelimiter/test
 func TestFixedWindowLimiter(t *testing.T) {
-    // Create a new Redis client connected to localhost
-    redisClient := redis.NewClient(&redis.Options{
-        Addr: "localhost:6379", // Redis server address
-    })
+    // Set up a mock Redis client for simulating Redis interactions.
+    redisClient, mock := redismock.NewClientMock()
 
-    // Initialize a Fixed Window Rate Limiter allowing 5 requests per minute
+    // Initialize a Fixed Window Rate Limiter with a limit of 5 requests per minute.
     limiter := ratelimiter.NewFixedWindowLimiter(redisClient, 5, time.Minute)
 
-    // Define a test key for rate limiting
     key := "test-key"
 
-    // First 5 requests should be allowed
-    for i := 0; i < 5; i++ {
+    // Mock Redis behavior for the first request: INCR should return 1, EXPIRE should set a 1-minute window.
+    mock.ExpectIncr("ratelimit:" + key).SetVal(1)
+    mock.ExpectExpire("ratelimit:" + key, time.Minute).SetVal(true)
+
+    // First request should be allowed.
+    allowed, err := limiter.Allow(context.Background(), key)
+    if err != nil || !allowed {
+        t.Errorf("Expected first request to be allowed, but got denied or an error: %v", err)
+    }
+
+    // Mock Redis behavior for subsequent requests (second to fifth).
+    for i := 2; i <= 5; i++ {
+        mock.ExpectIncr("ratelimit:" + key).SetVal(int64(i))
+    }
+
+    // Next 4 requests (2 to 5) should be allowed.
+    for i := 0; i < 4; i++ {
         allowed, err := limiter.Allow(context.Background(), key)
         if err != nil || !allowed {
-            t.Errorf("Expected request to be allowed, but got denied on attempt %d", i+1)
+            t.Errorf("Expected request to be allowed, but got denied on attempt %d", i+2)
         }
     }
 
-    // 6th request should be denied
-    allowed, err := limiter.Allow(context.Background(), key)
+    // Mock Redis behavior for the 6th request: INCR should return 6 (exceeding the limit).
+    mock.ExpectIncr("ratelimit:" + key).SetVal(6)
+
+    // 6th request should be denied due to exceeding the limit.
+    allowed, err = limiter.Allow(context.Background(), key)
     if err != nil {
         t.Fatalf("Unexpected error: %v", err)
     }
     if allowed {
-        t.Error("Expected request to be denied, but it was allowed")
+        t.Error("Expected 6th request to be denied, but it was allowed")
+    }
+
+    // Ensure all Redis mock expectations were met.
+    if err := mock.ExpectationsWereMet(); err != nil {
+        t.Errorf("Redis expectations were not met: %v", err)
     }
 }
