@@ -14,7 +14,10 @@ import (
 
 func TestFixedWindowLimiter_MemoryStore_Concurrent(t *testing.T) {
 	memStore := store.NewMemoryStore()
-	limiter := ratelimiter.NewFixedWindowLimiter(memStore, 100, time.Second*1)
+	limiter, nil := ratelimiter.NewFixedWindowLimiter(memStore, 100, time.Second*1)
+	if nil != nil {
+		t.Errorf("Failed to create rate limiter: %v", nil)
+	}
 	key := "user1"
 
 	var wg sync.WaitGroup
@@ -60,7 +63,10 @@ func TestFixedWindowLimiter_RedisStore_Concurrent(t *testing.T) {
 	// Clean up the key before test
 	client.Del(client.Context(), key)
 
-	limiter := ratelimiter.NewFixedWindowLimiter(redisStore, 100, time.Second*1)
+	limiter, err := ratelimiter.NewFixedWindowLimiter(redisStore, 100, time.Second*1)
+	if err != nil {
+		t.Errorf("Failed to create rate limiter: %v", nil)
+	}
 
 	var wg sync.WaitGroup
 	var allowedCount int
@@ -95,7 +101,10 @@ func TestFixedWindowLimiter_RedisStore_Concurrent(t *testing.T) {
 
 func TestSlidingWindowLimiter_MemoryStore_Concurrent(t *testing.T) {
 	memStore := store.NewMemoryStore()
-	limiter := ratelimiter.NewSlidingWindowLimiter(memStore, 100, time.Second*1)
+	limiter, err := ratelimiter.NewSlidingWindowLimiter(memStore, 100, time.Second*1)
+	if err != nil {
+		t.Errorf("Failed to create rate limiter: %v", err)
+	}
 	key := "user1"
 
 	var wg sync.WaitGroup
@@ -131,7 +140,10 @@ func TestTokenBucketLimiter_MemoryStore_Concurrent(t *testing.T) {
 	memStore := store.NewMemoryStore()
 	capacity := 100.0  // Maximum tokens
 	refillRate := 50.0 // Tokens per second
-	limiter := ratelimiter.NewTokenBucketLimiter(memStore, capacity, refillRate)
+	limiter, err := ratelimiter.NewTokenBucketLimiter(memStore, capacity, refillRate)
+	if err != nil {
+		t.Errorf("Failed to create rate limiter: %v", err)
+	}
 	key := "user1"
 
 	var wg sync.WaitGroup

@@ -13,7 +13,10 @@ import (
 func TestSlidingWindowLimiter(t *testing.T) {
 	// Initialize the MemoryStore
 	memStore := store.NewMemoryStore()
-	limiter := NewSlidingWindowLimiter(memStore, 5, time.Second*1)
+	limiter, err := NewSlidingWindowLimiter(memStore, 5, time.Second*1)
+	if err != nil {
+		t.Errorf("Failed to create rate limiter: %v", err)
+	}
 	key := "user1"
 
 	// Simulate 5 allowed requests

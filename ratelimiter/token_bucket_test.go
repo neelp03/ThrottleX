@@ -15,7 +15,10 @@ func TestTokenBucketLimiter(t *testing.T) {
 	memStore := store.NewMemoryStore()
 	capacity := 5.0   // Maximum of 5 tokens
 	refillRate := 1.0 // Refill 1 token per second
-	limiter := NewTokenBucketLimiter(memStore, capacity, refillRate)
+	limiter, err := NewTokenBucketLimiter(memStore, capacity, refillRate)
+	if err != nil {
+		t.Errorf("Failed to create rate limiter: %v", err)
+	}
 	key := "user1"
 
 	// Consume all tokens

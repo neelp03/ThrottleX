@@ -3,6 +3,7 @@
 package ratelimiter
 
 import (
+	"errors"
 	"strconv"
 	"time"
 
@@ -27,12 +28,22 @@ type FixedWindowLimiter struct {
 //
 // Returns:
 //   - A pointer to a FixedWindowLimiter instance
-func NewFixedWindowLimiter(store store.Store, limit int, window time.Duration) *FixedWindowLimiter {
+func NewFixedWindowLimiter(store store.Store, limit int, window time.Duration) (*FixedWindowLimiter, error) {
+	if limit <= 0 {
+		return nil, errors.New("limit must be greater than zero")
+	}
+	if window <= 0 {
+		return nil, errors.New("window duration must be greater than zero")
+	}
+	if store == nil {
+		return nil, errors.New("store cannot be nil")
+	}
+
 	return &FixedWindowLimiter{
 		store:  store,
 		limit:  limit,
 		window: window,
-	}
+	}, nil
 }
 
 // Allow checks whether a request associated with the given key is allowed under the rate limit.

@@ -1,6 +1,7 @@
 package ratelimiter
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -28,7 +29,17 @@ type TokenBucketLimiter struct {
 //
 // Returns:
 //   - A pointer to a TokenBucketLimiter instance
-func NewTokenBucketLimiter(store store.Store, capacity, refillRate float64) *TokenBucketLimiter {
+func NewTokenBucketLimiter(store store.Store, capacity, refillRate float64) (*TokenBucketLimiter, error) {
+	if capacity <= 0 {
+		return nil, errors.New("capacity must be greater than zero")
+	}
+	if refillRate <= 0 {
+		return nil, errors.New("refillRate must be greater than zero")
+	}
+	if store == nil {
+		return nil, errors.New("store cannot be nil")
+	}
+
 	limiter := &TokenBucketLimiter{
 		store:           store,
 		capacity:        capacity,
@@ -38,7 +49,7 @@ func NewTokenBucketLimiter(store store.Store, capacity, refillRate float64) *Tok
 		cleanupStopCh:   make(chan struct{}),
 	}
 	go limiter.startMutexCleanup()
-	return limiter
+	return limiter, nil
 }
 
 // getMutex returns the mutex associated with the key.

@@ -1,6 +1,7 @@
 package ratelimiter
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -19,7 +20,17 @@ type SlidingWindowLimiter struct {
 }
 
 // NewSlidingWindowLimiter creates a new instance of SlidingWindowLimiter.
-func NewSlidingWindowLimiter(store store.Store, limit int, window time.Duration) *SlidingWindowLimiter {
+func NewSlidingWindowLimiter(store store.Store, limit int, window time.Duration) (*SlidingWindowLimiter, error) {
+	if limit <= 0 {
+		return nil, errors.New("limit must be greater than zero")
+	}
+	if window <= 0 {
+		return nil, errors.New("window duration must be greater than zero")
+	}
+	if store == nil {
+		return nil, errors.New("store cannot be nil")
+	}
+
 	limiter := &SlidingWindowLimiter{
 		store:           store,
 		limit:           limit,
@@ -29,7 +40,7 @@ func NewSlidingWindowLimiter(store store.Store, limit int, window time.Duration)
 		cleanupStopCh:   make(chan struct{}),
 	}
 	go limiter.startMutexCleanup()
-	return limiter
+	return limiter, nil
 }
 
 // getMutex returns the mutex associated with the key.
