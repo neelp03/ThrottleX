@@ -47,4 +47,19 @@ func TestFixedWindowLimiter(t *testing.T) {
 	if !allowed {
 		t.Errorf("Request after window reset should be allowed")
 	}
+
+	// Wait for the window to expire
+	time.Sleep(time.Second * 1)
+
+	// Edge case: negative limit
+	_, err = NewFixedWindowLimiter(memStore, -1, time.Second)
+	if err == nil {
+		t.Error("Expected error when limit is set to a negative value")
+	}
+
+	// Edge case: zero window duration
+	_, err = NewFixedWindowLimiter(memStore, 5, 0)
+	if err == nil {
+		t.Error("Expected error when window duration is set to zero")
+	}
 }
