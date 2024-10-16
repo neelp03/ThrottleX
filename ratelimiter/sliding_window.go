@@ -55,14 +55,8 @@ func (l *SlidingWindowLimiter) getMutex(key string) *keyMutex {
 // Allow checks whether a request associated with the given key is allowed.
 func (l *SlidingWindowLimiter) Allow(key string) (bool, error) {
 	// Input validation
-	if key == "" {
-		return false, errors.New("invalid key: key cannot be empty")
-	}
-	if len(key) > 256 {
-		return false, errors.New("invalid key: key length exceeds maximum allowed length")
-	}
-	if !validKeyRegex.MatchString(key) {
-		return false, errors.New("invalid key: key contains invalid characters")
+	if err := validateKey(key); err != nil {
+		return false, err
 	}
 
 	km := l.getMutex(key)
@@ -88,7 +82,6 @@ func (l *SlidingWindowLimiter) Allow(key string) (bool, error) {
 	allowed := count <= int64(l.limit)
 	return allowed, nil
 }
-
 
 // startMutexCleanup runs a background goroutine to clean up unused mutexes.
 func (l *SlidingWindowLimiter) startMutexCleanup() {

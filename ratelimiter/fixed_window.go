@@ -6,7 +6,6 @@ import (
 	"errors"
 	"strconv"
 	"time"
-	"regexp"
 
 	"github.com/neelp03/throttlex/store"
 )
@@ -47,10 +46,6 @@ func NewFixedWindowLimiter(store store.Store, limit int, window time.Duration) (
 	}, nil
 }
 
-// validKeyRegex is a compiled regular expression that matches valid keys.
-// A valid key consists of alphanumeric characters, periods, underscores, and hyphens.
-var validKeyRegex = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
-
 // Allow checks whether a request associated with the given key is allowed under the rate limit.
 // It increments the count for the current window and determines if the request should be allowed.
 //
@@ -62,20 +57,8 @@ var validKeyRegex = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 //   - err: An error if there was a problem accessing the storage backend
 func (l *FixedWindowLimiter) Allow(key string) (bool, error) {
 	// Input validation
-
-	// Check for empty key
-	if key == "" {
-		return false, errors.New("invalid key: key cannot be empty")
-	}
-
-	// Check for overly long key (256 characters max)
-	if len(key) > 256 {
-		return false, errors.New("invalid key: key length exceeds maximum allowed length")
-	}
-
-	// Check for valid key format (alphanumeric, ".", "_", "-")
-	if !validKeyRegex.MatchString(key) {
-		return false, errors.New("invalid key: key contains invalid characters")
+	if err := validateKey(key); err != nil {
+		return false, err
 	}
 
 	// Proceed with rate limiting if input validation passes

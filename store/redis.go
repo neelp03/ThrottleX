@@ -189,3 +189,75 @@ func (r *RedisStore) SetTokenBucket(key string, state *TokenBucketState, expirat
 
 	return nil
 }
+
+// GetLeakyBucket retrieves the current state of the leaky bucket.
+//
+// Parameters:
+//   - key: The key associated with the leaky bucket state
+//
+// Returns:
+//   - state: The LeakyBucketState if it exists, or nil if it does not
+//   - err: An error if the operation fails
+func (r *RedisStore) GetLeakyBucket(key string) (*LeakyBucketState, error) {
+	// Use HGETALL to get all fields in the hash
+	result, err := r.client.HGetAll(r.ctx, key).Result()
+	if err != nil {
+		return nil, err
+	}
+	if len(result) == 0 {
+		// Key does not exist
+		return nil, nil
+	}
+
+	queueStr, ok := result["queue"]
+	if !ok {
+		return nil, fmt.Errorf("queue field missing in Redis hash")
+	}
+	lastLeakTimeStr, ok := result["last_leak_time"]
+	if !ok {
+		return nil, fmt.Errorf("last_leak_time field missing in Redis hash")
+	}
+
+	queue, err := strconv.Atoi(queueStr)
+	if err != nil {
+		return nil, err
+	}
+	lastLeakTimeInt, err := strconv.ParseInt(lastLeakTimeStr, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	lastLeakTime := time.Unix(0, lastLeakTimeInt)
+
+	return &LeakyBucketState{
+		Queue:        queue,
+		LastLeakTime: lastLeakTime,
+	}, nil
+}
+
+// SetLeakyBucket updates the state of the leaky bucket.
+//
+// Parameters:
+//   - key: The key associated with the leaky bucket state
+//   - state: The LeakyBucketState to set
+//   - expiration: The duration after which the key should expire
+//
+// Returns:
+//   - err: An error if the operation fails
+func (r *RedisStore) SetLeakyBucket(key string, state *LeakyBucketState, expiration time.Duration) error {
+	// Use HMSET to set multiple fields in the hash
+	err := r.client.HMSet(r.ctx, key, map[string]interface{}{
+		"queue":          state.Queue,
+		"last_leak_time": state.LastLeakTime.UnixNano(),
+	}).Err()
+	if err != nil {
+		return err
+	}
+
+	// Set the expiration on the key
+	err = r.client.Expire(r.ctx, key, expiration).Err()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
