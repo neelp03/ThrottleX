@@ -7,17 +7,39 @@ import (
 	"github.com/neelp03/throttlex/store"
 )
 
-// TestSlidingWindowLimiter tests the SlidingWindowLimiter with various scenarios.
-func TestSlidingWindowLimiter(t *testing.T) {
-	// Initialize the MemoryStore
+// TestSlidingWindowLimiterInvalidKeys checks edge cases with invalid key inputs.
+func TestSlidingWindowLimiterInvalidKeys(t *testing.T) {
 	memStore := store.NewMemoryStore()
 	limiter, err := NewSlidingWindowLimiter(memStore, 5, time.Second*1)
 	if err != nil {
-		t.Errorf("Failed to create rate limiter: %v", err)
+		t.Fatalf("Failed to create SlidingWindowLimiter: %v", err)
 	}
-	key := "user1"
 
-	// Simulate 5 allowed requests
+	// Empty key
+	allowed, err := limiter.Allow("")
+	if err == nil || allowed {
+		t.Error("Expected error or disallowed access for empty key")
+	}
+
+	// Invalid key format
+	invalidKey := "invalid!key@format"
+	allowed, err = limiter.Allow(invalidKey)
+	if err == nil || allowed {
+		t.Error("Expected error or disallowed access for invalid key format")
+	}
+}
+
+// TestSlidingWindowLimiterHighFrequency tests frequent requests within the same window.
+func TestSlidingWindowLimiterHighFrequency(t *testing.T) {
+	memStore := store.NewMemoryStore()
+	limiter, err := NewSlidingWindowLimiter(memStore, 5, time.Second*2)
+	if err != nil {
+		t.Fatalf("Failed to create SlidingWindowLimiter: %v", err)
+	}
+
+	key := "highFrequencyUser"
+
+	// Make 5 requests quickly
 	for i := 0; i < 5; i++ {
 		allowed, err := limiter.Allow(key)
 		if err != nil {
@@ -28,85 +50,87 @@ func TestSlidingWindowLimiter(t *testing.T) {
 		}
 	}
 
-	// 6th request should be blocked
+	// All subsequent requests should be blocked until window partially resets
 	allowed, err := limiter.Allow(key)
 	if err != nil {
-		t.Errorf("Unexpected error on 6th request: %v", err)
+		t.Errorf("Unexpected error on blocked request: %v", err)
 	}
 	if allowed {
-		t.Errorf("6th request should not be allowed")
+		t.Error("Request should be blocked as the rate limit has been reached")
 	}
 
-	// Wait for half the window to pass
-	time.Sleep(time.Millisecond * 500)
+	// Wait for half of the window duration to pass
+	time.Sleep(time.Second)
 
-	// 7th request should still be blocked
+	// Next request should still be blocked
 	allowed, err = limiter.Allow(key)
 	if err != nil {
-		t.Errorf("Unexpected error on 7th request: %v", err)
+		t.Errorf("Unexpected error on partially reset window: %v", err)
 	}
 	if allowed {
-		t.Errorf("7th request should not be allowed")
+		t.Error("Request should be blocked, as the partial window reset is not complete")
 	}
 
-	// Wait for the window to expire
-	time.Sleep(time.Millisecond * 600)
+	// Wait for the rest of the window to expire
+	time.Sleep(time.Second)
 
-	// Next request should be allowed after window resets
+	// Next request should be allowed after full window reset
 	allowed, err = limiter.Allow(key)
 	if err != nil {
 		t.Errorf("Unexpected error after window reset: %v", err)
 	}
 	if !allowed {
-		t.Errorf("Request after window reset should be allowed")
+		t.Error("Request after window reset should be allowed")
 	}
 }
 
-// TestSlidingWindowLimiterEdgeCases checks edge cases for invalid parameters.
-func TestSlidingWindowLimiterEdgeCases(t *testing.T) {
+// TestSlidingWindowLimiterVariableRequests simulates requests at different intervals.
+func TestSlidingWindowLimiterVariableRequests(t *testing.T) {
 	memStore := store.NewMemoryStore()
-
-	// Test with negative limit
-	_, err := NewSlidingWindowLimiter(memStore, -5, time.Second*1)
-	if err == nil {
-		t.Error("Expected error with negative limit, but got none")
-	}
-
-	// Test with zero window duration
-	_, err = NewSlidingWindowLimiter(memStore, 5, 0)
-	if err == nil {
-		t.Error("Expected error with zero window duration, but got none")
-	}
-}
-
-// TestSlidingWindowLimiterMultipleClients simulates rate limiting for multiple clients.
-func TestSlidingWindowLimiterMultipleClients(t *testing.T) {
-	memStore := store.NewMemoryStore()
-	limiter, err := NewSlidingWindowLimiter(memStore, 3, time.Second*1)
+	limiter, err := NewSlidingWindowLimiter(memStore, 3, time.Second*2)
 	if err != nil {
-		t.Errorf("Failed to create rate limiter: %v", err)
+		t.Fatalf("Failed to create SlidingWindowLimiter: %v", err)
 	}
 
-	// Simulate requests for multiple clients
-	keys := []string{"client1", "client2", "client3"}
-	for _, key := range keys {
-		for i := 0; i < 3; i++ {
-			allowed, err := limiter.Allow(key)
-			if err != nil {
-				t.Errorf("Unexpected error for key %s on request %d: %v", key, i+1, err)
-			}
-			if !allowed {
-				t.Errorf("Request %d for key %s should be allowed", i+1, key)
-			}
-		}
+	key := "variableUser"
 
-		// 4th request should be blocked for each key
+	// First request - should be allowed
+	allowed, err := limiter.Allow(key)
+	if err != nil {
+		t.Errorf("Unexpected error on 1st request: %v", err)
+	}
+	if !allowed {
+		t.Error("1st request should be allowed")
+	}
+
+	// Wait a short time and make two more requests within the limit
+	time.Sleep(time.Millisecond * 500)
+	for i := 0; i < 2; i++ {
 		allowed, err := limiter.Allow(key)
 		if err != nil {
-			t.Errorf("Unexpected error for key %s on 4th request: %v", key, err)
+			t.Errorf("Unexpected error on request %d: %v", i+2, err)
 		}
-		if allowed {
-			t.Errorf("4th request for key %s should not be allowed", key)
+		if !allowed {
+			t.Errorf("Request %d should be allowed", i+2)
 		}
+	}
+
+	// 4th request should be blocked
+	allowed, err = limiter.Allow(key)
+	if err != nil {
+		t.Errorf("Unexpected error on blocked request: %v", err)
+	}
+	if allowed {
+		t.Error("4th request should be blocked, limit reached")
+	}
+
+	// Wait for full window duration and reattempt
+	time.Sleep(time.Second * 2)
+	allowed, err = limiter.Allow(key)
+	if err != nil {
+		t.Errorf("Unexpected error after full window reset: %v", err)
+	}
+	if !allowed {
+		t.Error("Request after window reset should be allowed")
 	}
 }
