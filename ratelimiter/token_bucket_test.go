@@ -11,13 +11,12 @@ import (
 
 // TestTokenBucketLimiter tests the TokenBucketLimiter using the MemoryStore.
 func TestTokenBucketLimiter(t *testing.T) {
-	// Initialize the MemoryStore
 	memStore := store.NewMemoryStore()
 	capacity := 5.0   // Maximum of 5 tokens
 	refillRate := 1.0 // Refill 1 token per second
 	limiter, err := NewTokenBucketLimiter(memStore, capacity, refillRate)
 	if err != nil {
-		t.Errorf("Failed to create rate limiter: %v", err)
+		t.Fatalf("Failed to create rate limiter: %v", err)
 	}
 	key := "user1"
 
@@ -95,7 +94,7 @@ func TestTokenBucketLimiterRefill(t *testing.T) {
 	refillRate := 1.0 // 1 token per second
 	limiter, err := NewTokenBucketLimiter(memStore, capacity, refillRate)
 	if err != nil {
-		t.Errorf("Failed to create rate limiter: %v", err)
+		t.Fatalf("Failed to create rate limiter: %v", err)
 	}
 	key := "user2"
 
@@ -138,5 +137,40 @@ func TestTokenBucketLimiterRefill(t *testing.T) {
 	}
 	if allowed {
 		t.Errorf("Request should be blocked after single token is consumed")
+	}
+}
+
+// TestTokenBucketLimiterMultipleClients tests multiple clients with separate token buckets.
+func TestTokenBucketLimiterMultipleClients(t *testing.T) {
+	memStore := store.NewMemoryStore()
+	capacity := 2.0   // Maximum of 2 tokens per client
+	refillRate := 1.0 // Refill 1 token per second per client
+	limiter, err := NewTokenBucketLimiter(memStore, capacity, refillRate)
+	if err != nil {
+		t.Fatalf("Failed to create rate limiter: %v", err)
+	}
+
+	clients := []string{"client1", "client2", "client3"}
+
+	// Each client consumes 2 tokens initially
+	for _, client := range clients {
+		for i := 0; i < 2; i++ {
+			allowed, err := limiter.Allow(client)
+			if err != nil {
+				t.Errorf("Unexpected error for client %s on request %d: %v", client, i+1, err)
+			}
+			if !allowed {
+				t.Errorf("Request %d for client %s should be allowed", i+1, client)
+			}
+		}
+
+		// The next request for each client should be blocked
+		allowed, err := limiter.Allow(client)
+		if err != nil {
+			t.Errorf("Unexpected error for client %s on blocked request: %v", client, err)
+		}
+		if allowed {
+			t.Errorf("Request exceeding capacity should not be allowed for client %s", client)
+		}
 	}
 }
