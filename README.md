@@ -8,6 +8,9 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/neelp03/throttlex?v=1)](https://goreportcard.com/report/github.com/neelp03/throttlex)
 [![GoDoc](https://godoc.org/github.com/neelp03/throttlex?status.svg)](https://godoc.org/github.com/neelp03/throttlex)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![GitHub contributors](https://img.shields.io/github/contributors/neelp03/envirox.svg)](https://github.com/neelp03/envirox/graphs/contributors)
+[![GitHub forks](https://img.shields.io/github/forks/neelp03/envirox.svg?style=social&label=Fork&maxAge=2592000)](https://github.com/neelp03/envirox/network/members)
+[![GitHub stars](https://img.shields.io/github/stars/neelp03/envirox.svg?style=social&label=Star&maxAge=2592000)](https://github.com/neelp03/envirox/stargazers)
 
 --- 
 
