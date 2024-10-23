@@ -1,5 +1,3 @@
-// ratelimiter/ratelimiter.go
-
 package ratelimiter
 
 import (
@@ -32,13 +30,14 @@ const (
 
 // LimiterConfig holds configuration for a rate limiter.
 type LimiterConfig struct {
-	Policy     PolicyType
-	Store      store.Store
-	Limit      int           // General limit parameter
-	Interval   time.Duration // General interval parameter
-	Capacity   float64       // For TokenBucket and LeakyBucket
-	RefillRate float64       // For TokenBucket
-	LeakRate   time.Duration // For LeakyBucket
+	Policy           PolicyType
+	Store            store.Store
+	Limit            int           // General limit parameter
+	Interval         time.Duration // General interval parameter
+	Capacity         float64       // For TokenBucket and LeakyBucket
+	RefillRate       float64       // For TokenBucket
+	LeakRate         time.Duration // For LeakyBucket
+	ConcurrencyLimit int           // Concurrency limit for LeakyBucket or concurrency limiter
 }
 
 // NewRateLimiter is a factory function that creates a RateLimiter based on the specified policy.
@@ -51,7 +50,7 @@ func NewRateLimiter(config LimiterConfig) (RateLimiter, error) {
 	case TokenBucket:
 		return NewTokenBucketLimiter(config.Store, config.Capacity, config.RefillRate)
 	case LeakyBucket:
-		return NewLeakyBucketLimiter(config.Store, int(config.Capacity), config.LeakRate)
+		return NewLeakyBucketLimiter(config.Store, int(config.Capacity), config.LeakRate, config.ConcurrencyLimit)
 	case Concurrency:
 		return NewConcurrencyLimiter(config.Limit), nil
 	default:
