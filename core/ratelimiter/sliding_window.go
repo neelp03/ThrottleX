@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/neelp03/throttlex/store"
+	"github.com/neelp03/throttlex/core/store"
 )
 
 // SlidingWindowLimiter implements the sliding window rate-limiting algorithm.

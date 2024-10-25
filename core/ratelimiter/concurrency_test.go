@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/neelp03/throttlex/store"
+	"github.com/neelp03/throttlex/core/store"
 )
 
 func TestConcurrencyLimiter_AcquireRelease(t *testing.T) {

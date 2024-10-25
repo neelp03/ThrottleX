@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/neelp03/throttlex/store"
+	"github.com/neelp03/throttlex/core/store"
 )
 
 // LeakyBucketLimiter implements the leaky bucket rate-limiting algorithm.

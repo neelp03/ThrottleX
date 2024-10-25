@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/neelp03/throttlex/store"
+	"github.com/neelp03/throttlex/core/store"
 )
 
 // ConcurrencyLimiter limits the number of concurrent requests per key.

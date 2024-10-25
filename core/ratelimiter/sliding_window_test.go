@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/neelp03/throttlex/store"
+	"github.com/neelp03/throttlex/core/store"
 )
 
 // TestSlidingWindowLimiterInvalidKeys checks edge cases with invalid key inputs.

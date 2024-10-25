@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/neelp03/throttlex/store"
+	"github.com/neelp03/throttlex/core/store"
 )
 
 // FixedWindowLimiter implements the fixed window rate limiting algorithm.

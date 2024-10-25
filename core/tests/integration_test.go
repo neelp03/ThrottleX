@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/neelp03/throttlex/ratelimiter"
-	"github.com/neelp03/throttlex/store"
+	"github.com/neelp03/throttlex/core/ratelimiter"
+	"github.com/neelp03/throttlex/core/store"
 )
 
 func TestIntegration_FixedWindowLimiter(t *testing.T) {

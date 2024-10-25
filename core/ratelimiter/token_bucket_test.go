@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/neelp03/throttlex/store"
+	"github.com/neelp03/throttlex/core/store"
 )
 
 // TestTokenBucketLimiter tests the TokenBucketLimiter using the MemoryStore.

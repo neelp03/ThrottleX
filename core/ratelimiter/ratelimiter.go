@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/neelp03/throttlex/store"
+	"github.com/neelp03/throttlex/core/store"
 )
 
 // RateLimiter is an interface that defines the contract for rate limiting algorithms.

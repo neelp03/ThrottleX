@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/neelp03/throttlex/store"
+	"github.com/neelp03/throttlex/core/store"
 )
 
 func TestLeakyBucketLimiter_Allow(t *testing.T) {
