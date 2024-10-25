@@ -1,5 +1,3 @@
-// store/store.go
-
 package store
 
 import "time"
@@ -7,7 +5,8 @@ import "time"
 // Store is an interface for storage backends used by rate limiters.
 type Store interface {
 	// Fixed Window methods
-	Increment(key string, expiration time.Duration) (int64, error)
+	Increment(key string, delta int64, expiration time.Duration) (int64, error)
+	GetCounter(key string) (int64, error)
 
 	// Sliding Window methods
 	AddTimestamp(key string, timestamp int64, expiration time.Duration) error

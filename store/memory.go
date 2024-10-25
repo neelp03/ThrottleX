@@ -1,5 +1,3 @@
-// store/memory.go
-
 package store
 
 import (
@@ -31,20 +29,38 @@ func NewMemoryStore() *MemoryStore {
 	}
 }
 
-// Increment increments the counter and sets expiration.
-func (s *MemoryStore) Increment(key string, expiration time.Duration) (int64, error) {
+// Increment increments the counter by delta and sets expiration.
+func (s *MemoryStore) Increment(key string, delta int64, expiration time.Duration) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	counter, exists := s.counters[key]
 	if !exists || time.Now().After(counter.expiration) {
 		counter = &memoryCounter{
-			count:      1,
+			count:      delta,
 			expiration: time.Now().Add(expiration),
+		}
+		if counter.count < 0 {
+			counter.count = 0
 		}
 		s.counters[key] = counter
 	} else {
-		counter.count++
+		counter.count += delta
+		if counter.count < 0 {
+			counter.count = 0
+		}
+	}
+	return counter.count, nil
+}
+
+// GetCounter retrieves the current value of the counter.
+func (s *MemoryStore) GetCounter(key string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	counter, exists := s.counters[key]
+	if !exists || time.Now().After(counter.expiration) {
+		return 0, nil
 	}
 	return counter.count, nil
 }

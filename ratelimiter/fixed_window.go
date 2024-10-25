@@ -1,5 +1,3 @@
-// ratelimiter/fixed_window.go
-
 package ratelimiter
 
 import (
@@ -11,8 +9,6 @@ import (
 )
 
 // FixedWindowLimiter implements the fixed window rate limiting algorithm.
-// It limits the number of requests allowed within a fixed time window.
-// Once the limit is reached, all subsequent requests are denied until the window resets.
 type FixedWindowLimiter struct {
 	store  store.Store   // Storage backend to keep track of request counts
 	limit  int           // Maximum number of requests allowed in the window
@@ -20,14 +16,6 @@ type FixedWindowLimiter struct {
 }
 
 // NewFixedWindowLimiter creates a new instance of FixedWindowLimiter.
-//
-// Parameters:
-//   - store: Storage backend implementing the store.Store interface (e.g., RedisStore, MemoryStore)
-//   - limit: Maximum number of requests allowed within the time window
-//   - window: Duration of the fixed time window (e.g., time.Minute * 1)
-//
-// Returns:
-//   - A pointer to a FixedWindowLimiter instance
 func NewFixedWindowLimiter(store store.Store, limit int, window time.Duration) (*FixedWindowLimiter, error) {
 	if limit <= 0 {
 		return nil, errors.New("limit must be greater than zero")
@@ -47,14 +35,6 @@ func NewFixedWindowLimiter(store store.Store, limit int, window time.Duration) (
 }
 
 // Allow checks whether a request associated with the given key is allowed under the rate limit.
-// It increments the count for the current window and determines if the request should be allowed.
-//
-// Parameters:
-//   - key: A unique identifier for the client (e.g., IP address, user ID)
-//
-// Returns:
-//   - allowed: A boolean indicating whether the request is allowed (true) or should be rate-limited (false)
-//   - err: An error if there was a problem accessing the storage backend
 func (l *FixedWindowLimiter) Allow(key string) (bool, error) {
 	// Input validation
 	if err := validateKey(key); err != nil {
@@ -63,7 +43,7 @@ func (l *FixedWindowLimiter) Allow(key string) (bool, error) {
 
 	// Proceed with rate limiting if input validation passes
 	windowKey := l.getWindowKey(key)
-	count, err := l.store.Increment(windowKey, l.window)
+	count, err := l.store.Increment(windowKey, 1, l.window) // Added '1' as delta parameter
 	if err != nil {
 		return false, err
 	}
@@ -75,13 +55,6 @@ func (l *FixedWindowLimiter) Allow(key string) (bool, error) {
 }
 
 // getWindowKey generates a unique key for the current time window and client key.
-// This ensures counts are tracked separately for each client and time window.
-//
-// Parameters:
-//   - key: The unique identifier for the client
-//
-// Returns:
-//   - A string representing the combined key for the client and current window
 func (l *FixedWindowLimiter) getWindowKey(key string) string {
 	// Calculate the current window number based on the time
 	windowNumber := time.Now().Unix() / int64(l.window.Seconds())

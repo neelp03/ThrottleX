@@ -10,18 +10,17 @@ import (
 
 // LeakyBucketLimiter implements the leaky bucket rate-limiting algorithm.
 type LeakyBucketLimiter struct {
-	store           store.Store
-	capacity        int
-	leakRate        time.Duration
-	mutexes         sync.Map
-	cleanupTicker   *time.Ticker
-	cleanupStopCh   chan struct{}
-	cleanupInterval time.Duration
-	concurrency     *ConcurrencyLimiter
+	store           store.Store   // Storage backend to keep track of leaky bucket states
+	capacity        int           // Maximum capacity of the bucket
+	leakRate        float64       // Leak rate per second
+	mutexes         sync.Map      // Map of mutexes for per-key synchronization
+	cleanupTicker   *time.Ticker  // Ticker for periodic mutex cleanup
+	cleanupStopCh   chan struct{} // Channel to stop the cleanup goroutine
+	cleanupInterval time.Duration // Interval for mutex cleanup
 }
 
-// NewLeakyBucketLimiter creates a new LeakyBucketLimiter.
-func NewLeakyBucketLimiter(store store.Store, capacity int, leakRate time.Duration, concurrencyLimit int) (*LeakyBucketLimiter, error) {
+// NewLeakyBucketLimiter creates a new instance of LeakyBucketLimiter.
+func NewLeakyBucketLimiter(store store.Store, capacity int, leakRate float64) (*LeakyBucketLimiter, error) {
 	if capacity <= 0 {
 		return nil, errors.New("capacity must be greater than zero")
 	}
@@ -36,81 +35,12 @@ func NewLeakyBucketLimiter(store store.Store, capacity int, leakRate time.Durati
 		store:           store,
 		capacity:        capacity,
 		leakRate:        leakRate,
+		mutexes:         sync.Map{},
 		cleanupInterval: time.Minute * 5,
 		cleanupStopCh:   make(chan struct{}),
-		concurrency:     NewConcurrencyLimiter(concurrencyLimit), // Initialize concurrency limiter
 	}
 	go limiter.startMutexCleanup()
 	return limiter, nil
-}
-
-// Allow checks whether a request is allowed under the leaky bucket rate limit.
-func (l *LeakyBucketLimiter) Allow(key string) (bool, error) {
-	// Validate the input key
-	if err := validateKey(key); err != nil {
-		return false, err
-	}
-
-	// Check if concurrency limit allows the request
-	allowedConcurrency, err := l.concurrency.Allow(key)
-	if err != nil {
-		return false, err
-	}
-	if !allowedConcurrency {
-		return false, errors.New("concurrent request limit exceeded")
-	}
-
-	// Use mutex for request state updates
-	km := l.getMutex(key)
-	km.mu.Lock()
-	defer km.mu.Unlock()
-	km.lastAccess = time.Now()
-
-	// Get the current state from the store
-	state, err := l.store.GetLeakyBucket(key)
-	if err != nil {
-		return false, err
-	}
-
-	now := time.Now()
-	if state == nil {
-		// Initialize a new bucket if none exists
-		state = &store.LeakyBucketState{
-			LastLeakTime: now,
-			Queue:        0,
-		}
-	}
-
-	// Calculate how many requests have leaked since the last check
-	elapsed := now.Sub(state.LastLeakTime)
-	leaked := int(elapsed / l.leakRate)
-	if leaked > 0 {
-		state.Queue = max(0, state.Queue-leaked)
-		state.LastLeakTime = state.LastLeakTime.Add(time.Duration(leaked) * l.leakRate)
-	}
-
-	// Check if there's capacity in the bucket
-	if state.Queue < l.capacity {
-		// Add request to the bucket
-		state.Queue++
-		err = l.store.SetLeakyBucket(key, state, time.Hour*24)
-		if err != nil {
-			return false, err
-		}
-		return true, nil
-	}
-
-	// Bucket is full, reject request
-	err = l.store.SetLeakyBucket(key, state, time.Hour*24)
-	if err != nil {
-		return false, err
-	}
-	return false, nil
-}
-
-// Release the semaphore for concurrency control after request completion.
-func (l *LeakyBucketLimiter) Release() error {
-	return l.concurrency.Release()
 }
 
 // getMutex returns the mutex associated with the key.
@@ -120,6 +50,62 @@ func (l *LeakyBucketLimiter) getMutex(key string) *keyMutex {
 		lastAccess: time.Now(),
 	})
 	return mutexInterface.(*keyMutex)
+}
+
+// Allow checks whether a request associated with the given key is allowed under the rate limit.
+func (l *LeakyBucketLimiter) Allow(key string) (bool, error) {
+	// Input validation
+	if err := validateKey(key); err != nil {
+		return false, err
+	}
+
+	km := l.getMutex(key)
+	km.mu.Lock()
+	defer km.mu.Unlock()
+	km.lastAccess = time.Now()
+
+	state, err := l.store.GetLeakyBucket(key)
+	if err != nil {
+		return false, err
+	}
+
+	now := time.Now()
+
+	if state == nil {
+		// Initialize state
+		state = &store.LeakyBucketState{
+			Queue:        0,
+			LastLeakTime: now,
+		}
+	} else {
+		// Leak tokens based on elapsed time
+		elapsed := now.Sub(state.LastLeakTime).Seconds()
+		leaked := int(elapsed * l.leakRate)
+		if leaked > 0 {
+			state.Queue -= leaked
+			if state.Queue < 0 {
+				state.Queue = 0
+			}
+			// Update LastLeakTime
+			state.LastLeakTime = state.LastLeakTime.Add(time.Duration(float64(leaked)/l.leakRate) * time.Second)
+		}
+	}
+
+	if state.Queue < l.capacity {
+		state.Queue++
+		err = l.store.SetLeakyBucket(key, state, time.Hour*24)
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	} else {
+		// Update the state even if not allowed
+		err = l.store.SetLeakyBucket(key, state, time.Hour*24)
+		if err != nil {
+			return false, err
+		}
+		return false, nil
+	}
 }
 
 // startMutexCleanup runs a background goroutine to clean up unused mutexes.
