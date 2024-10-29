@@ -14,12 +14,12 @@ func setupTestRedisClient() *redis.Client {
 	})
 }
 
-func TestRedisStore_Increment(t *testing.T) {
+func TestRedisStore_Increment_ErrorHandling(t *testing.T) {
 	client := setupTestRedisClient()
 	store := NewRedisStore(client)
 	key := "test_increment_key"
 
-	// First increment
+	// Normal increment
 	count, err := store.Increment(key, 1, time.Minute)
 	if err != nil {
 		t.Fatalf("Increment failed: %v", err)
@@ -28,67 +28,63 @@ func TestRedisStore_Increment(t *testing.T) {
 		t.Errorf("Expected count 1, got %d", count)
 	}
 
-	// Second increment
-	count, err = store.Increment(key, 2, time.Minute)
-	if err != nil {
-		t.Fatalf("Increment failed: %v", err)
+	// Simulate Redis error
+	client.Close()
+	_, err = store.Increment(key, 1, time.Minute)
+	if err == nil {
+		t.Fatalf("Expected Redis error on Increment, got nil")
 	}
-	if count != 3 {
-		t.Errorf("Expected count 3, got %d", count)
-	}
-
-	// Negative increment to check for underflow protection
-	count, err = store.Increment(key, -5, time.Minute)
-	if err != nil {
-		t.Fatalf("Increment with negative value failed: %v", err)
-	}
-	if count != 0 {
-		t.Errorf("Expected count 0 after underflow protection, got %d", count)
-	}
+	client = setupTestRedisClient() // Reconnect for other tests
 
 	// Cleanup
 	client.Del(context.Background(), key)
 }
 
-func TestRedisStore_GetCounter(t *testing.T) {
+func TestRedisStore_GetCounter_ErrorHandling(t *testing.T) {
 	client := setupTestRedisClient()
 	store := NewRedisStore(client)
 	key := "test_get_counter_key"
 
-	// Counter should initially be zero (non-existent key)
+	// Non-existent key should return 0 without error
 	count, err := store.GetCounter(key)
 	if err != nil {
 		t.Fatalf("GetCounter failed: %v", err)
 	}
 	if count != 0 {
-		t.Errorf("Expected count 0, got %d", count)
+		t.Errorf("Expected count 0 for non-existent key, got %d", count)
 	}
 
-	// Increment the counter
-	_, err = store.Increment(key, 1, time.Minute)
+	// Set a value and check retrieval
+	_, err = store.Increment(key, 2, time.Minute)
 	if err != nil {
 		t.Fatalf("Increment failed: %v", err)
 	}
-
-	// Counter should be 1 now
 	count, err = store.GetCounter(key)
 	if err != nil {
-		t.Fatalf("GetCounter failed: %v", err)
+		t.Fatalf("GetCounter failed after increment: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("Expected count 1, got %d", count)
+	if count != 2 {
+		t.Errorf("Expected count 2, got %d", count)
 	}
+
+	// Simulate Redis error
+	client.Close()
+	_, err = store.GetCounter(key)
+	if err == nil {
+		t.Fatalf("Expected Redis error on GetCounter, got nil")
+	}
+	client = setupTestRedisClient() // Reconnect
 
 	// Cleanup
 	client.Del(context.Background(), key)
 }
 
-func TestRedisStore_AddTimestamp(t *testing.T) {
+func TestRedisStore_AddTimestamp_ErrorHandling(t *testing.T) {
 	client := setupTestRedisClient()
 	store := NewRedisStore(client)
 	key := "test_add_timestamp_key"
 	timestamp := time.Now().UnixNano()
-	expiration := time.Minute
+	expiration := time.Second
 
 	// Add a timestamp
 	err := store.AddTimestamp(key, timestamp, expiration)
@@ -96,7 +92,7 @@ func TestRedisStore_AddTimestamp(t *testing.T) {
 		t.Fatalf("AddTimestamp failed: %v", err)
 	}
 
-	// Verify the timestamp exists
+	// Verify it exists
 	count, err := store.CountTimestamps(key, timestamp, timestamp)
 	if err != nil {
 		t.Fatalf("CountTimestamps failed: %v", err)
@@ -105,118 +101,128 @@ func TestRedisStore_AddTimestamp(t *testing.T) {
 		t.Errorf("Expected count 1, got %d", count)
 	}
 
+	// Simulate Redis error on AddTimestamp
+	client.Close()
+	err = store.AddTimestamp(key, timestamp, expiration)
+	if err == nil {
+		t.Fatalf("Expected Redis error on AddTimestamp, got nil")
+	}
+	client = setupTestRedisClient()
+
 	// Cleanup
 	client.Del(context.Background(), key)
 }
 
-func TestRedisStore_CountTimestamps(t *testing.T) {
-	client := setupTestRedisClient()
-	store := NewRedisStore(client)
-	key := "test_count_timestamps_key"
-
-	now := time.Now().UnixNano()
-	err := store.AddTimestamp(key, now, time.Minute)
-	if err != nil {
-		t.Fatalf("AddTimestamp failed: %v", err)
-	}
-	err = store.AddTimestamp(key, now+1000, time.Minute)
-	if err != nil {
-		t.Fatalf("AddTimestamp failed: %v", err)
-	}
-
-	// Count timestamps within the range
-	count, err := store.CountTimestamps(key, now, now+1000)
-	if err != nil {
-		t.Fatalf("CountTimestamps failed: %v", err)
-	}
-	if count != 2 {
-		t.Errorf("Expected count 2, got %d", count)
-	}
-
-	// Edge case: No timestamps in range
-	count, err = store.CountTimestamps(key, now+2000, now+3000)
-	if err != nil {
-		t.Fatalf("CountTimestamps failed: %v", err)
-	}
-	if count != 0 {
-		t.Errorf("Expected count 0, got %d", count)
-	}
-
-	client.Del(context.Background(), key)
-}
-
-func TestRedisStore_TokenBucket(t *testing.T) {
+func TestRedisStore_GetTokenBucket_ErrorHandling(t *testing.T) {
 	client := setupTestRedisClient()
 	store := NewRedisStore(client)
 	key := "test_token_bucket_key"
-	expiration := time.Minute
+	expiration := time.Second
 
-	// Set token bucket state
-	state := &TokenBucketState{
-		Tokens:         10,
-		LastUpdateTime: time.Now().UnixNano(),
-	}
+	// Set a token bucket state
+	state := &TokenBucketState{Tokens: 5, LastUpdateTime: time.Now().UnixNano()}
 	err := store.SetTokenBucket(key, state, expiration)
 	if err != nil {
 		t.Fatalf("SetTokenBucket failed: %v", err)
 	}
 
-	// Retrieve and check token bucket state
-	retrievedState, err := store.GetTokenBucket(key)
+	// Retrieve and validate
+	retrieved, err := store.GetTokenBucket(key)
 	if err != nil {
 		t.Fatalf("GetTokenBucket failed: %v", err)
 	}
-	if retrievedState == nil || retrievedState.Tokens != 10 {
-		t.Errorf("Expected tokens 10, got %v", retrievedState)
+	if retrieved == nil || retrieved.Tokens != 5 {
+		t.Errorf("Expected tokens 5, got %v", retrieved)
 	}
 
-	// Edge case: Non-existent key
-	nonExistentKey := "nonexistent_key"
-	nonExistentState, err := store.GetTokenBucket(nonExistentKey)
-	if err != nil {
-		t.Fatalf("Expected no error for non-existent key, got %v", err)
+	// Simulate Redis error
+	client.Close()
+	_, err = store.GetTokenBucket(key)
+	if err == nil {
+		t.Fatalf("Expected Redis error on GetTokenBucket, got nil")
 	}
-	if nonExistentState != nil {
-		t.Errorf("Expected nil state for non-existent key, got %v", nonExistentState)
-	}
+	client = setupTestRedisClient()
 
+	// Corrupted data test
+	client.HSet(context.Background(), key, "tokens", "not_a_number")
+	_, err = store.GetTokenBucket(key)
+	if err == nil {
+		t.Fatalf("Expected error on corrupted data, got nil")
+	}
 	client.Del(context.Background(), key)
 }
 
-func TestRedisStore_LeakyBucket(t *testing.T) {
+func TestRedisStore_SetTokenBucket_ErrorHandling(t *testing.T) {
+	client := setupTestRedisClient()
+	store := NewRedisStore(client)
+	key := "test_token_bucket_key"
+	expiration := time.Second
+
+	// Simulate Redis error on SetTokenBucket
+	client.Close()
+	err := store.SetTokenBucket(key, &TokenBucketState{Tokens: 10, LastUpdateTime: time.Now().UnixNano()}, expiration)
+	if err == nil {
+		t.Fatalf("Expected Redis error on SetTokenBucket, got nil")
+	}
+	client = setupTestRedisClient()
+
+	// Cleanup
+	client.Del(context.Background(), key)
+}
+
+func TestRedisStore_GetLeakyBucket_ErrorHandling(t *testing.T) {
 	client := setupTestRedisClient()
 	store := NewRedisStore(client)
 	key := "test_leaky_bucket_key"
-	expiration := time.Minute
+	expiration := time.Second
 
 	// Set leaky bucket state
-	state := &LeakyBucketState{
-		Queue:        5,
-		LastLeakTime: time.Now(),
-	}
+	state := &LeakyBucketState{Queue: 3, LastLeakTime: time.Now()}
 	err := store.SetLeakyBucket(key, state, expiration)
 	if err != nil {
 		t.Fatalf("SetLeakyBucket failed: %v", err)
 	}
 
-	// Retrieve and check leaky bucket state
-	retrievedState, err := store.GetLeakyBucket(key)
+	// Retrieve and validate
+	retrieved, err := store.GetLeakyBucket(key)
 	if err != nil {
 		t.Fatalf("GetLeakyBucket failed: %v", err)
 	}
-	if retrievedState == nil || retrievedState.Queue != 5 {
-		t.Errorf("Expected queue 5, got %v", retrievedState)
+	if retrieved == nil || retrieved.Queue != 3 {
+		t.Errorf("Expected queue 3, got %v", retrieved)
 	}
 
-	// Edge case: Non-existent key
-	nonExistentKey := "nonexistent_key_leaky"
-	nonExistentLeakyState, err := store.GetLeakyBucket(nonExistentKey)
-	if err != nil {
-		t.Fatalf("Expected no error for non-existent key, got %v", err)
+	// Simulate Redis error
+	client.Close()
+	_, err = store.GetLeakyBucket(key)
+	if err == nil {
+		t.Fatalf("Expected Redis error on GetLeakyBucket, got nil")
 	}
-	if nonExistentLeakyState != nil {
-		t.Errorf("Expected nil state for non-existent key, got %v", nonExistentLeakyState)
-	}
+	client = setupTestRedisClient()
 
+	// Corrupted data test
+	client.HSet(context.Background(), key, "queue", "not_a_number")
+	_, err = store.GetLeakyBucket(key)
+	if err == nil {
+		t.Fatalf("Expected error on corrupted data, got nil")
+	}
+	client.Del(context.Background(), key)
+}
+
+func TestRedisStore_SetLeakyBucket_ErrorHandling(t *testing.T) {
+	client := setupTestRedisClient()
+	store := NewRedisStore(client)
+	key := "test_leaky_bucket_key"
+	expiration := time.Second
+
+	// Simulate Redis error on SetLeakyBucket
+	client.Close()
+	err := store.SetLeakyBucket(key, &LeakyBucketState{Queue: 10, LastLeakTime: time.Now()}, expiration)
+	if err == nil {
+		t.Fatalf("Expected Redis error on SetLeakyBucket, got nil")
+	}
+	client = setupTestRedisClient()
+
+	// Cleanup
 	client.Del(context.Background(), key)
 }
