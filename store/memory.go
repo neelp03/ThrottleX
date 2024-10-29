@@ -40,15 +40,9 @@ func (s *MemoryStore) Increment(key string, delta int64, expiration time.Duratio
 			count:      delta,
 			expiration: time.Now().Add(expiration),
 		}
-		if counter.count < 0 {
-			counter.count = 0
-		}
 		s.counters[key] = counter
 	} else {
 		counter.count += delta
-		if counter.count < 0 {
-			counter.count = 0
-		}
 	}
 	return counter.count, nil
 }
@@ -65,24 +59,30 @@ func (s *MemoryStore) GetCounter(key string) (int64, error) {
 	return counter.count, nil
 }
 
-// AddTimestamp adds a timestamp to the list associated with the key.
+// AddTimestamp adds a timestamp with expiration to the sliding window list for a given key.
 func (s *MemoryStore) AddTimestamp(key string, timestamp int64, expiration time.Duration) error {
+	return s.addTimestampWithCleanup(key, timestamp, expiration, false)
+}
+
+// addTimestampWithCleanup adds a timestamp and, if requested, sets up cleanup after expiration.
+func (s *MemoryStore) addTimestampWithCleanup(key string, timestamp int64, expiration time.Duration, cleanup bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.slidingWindows[key] = append(s.slidingWindows[key], timestamp)
 
-	// Set up a timer to delete the key after expiration
-	go func() {
-		time.Sleep(expiration)
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		delete(s.slidingWindows, key)
-	}()
+	if cleanup {
+		go func() {
+			time.Sleep(expiration)
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			delete(s.slidingWindows, key)
+		}()
+	}
 	return nil
 }
 
-// CountTimestamps counts the number of timestamps within the given range [start, end].
+// CountTimestamps counts timestamps in a given range [start, end].
 func (s *MemoryStore) CountTimestamps(key string, start int64, end int64) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -101,7 +101,7 @@ func (s *MemoryStore) CountTimestamps(key string, start int64, end int64) (int64
 	return count, nil
 }
 
-// GetTokenBucket retrieves the current state of the token bucket.
+// GetTokenBucket retrieves the token bucket state.
 func (s *MemoryStore) GetTokenBucket(key string) (*TokenBucketState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -113,14 +113,12 @@ func (s *MemoryStore) GetTokenBucket(key string) (*TokenBucketState, error) {
 	return state, nil
 }
 
-// SetTokenBucket updates the state of the token bucket.
+// SetTokenBucket sets the token bucket state and expiration.
 func (s *MemoryStore) SetTokenBucket(key string, state *TokenBucketState, expiration time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.tokenBuckets[key] = state
-
-	// Set up a timer to delete the key after expiration
 	go func() {
 		time.Sleep(expiration)
 		s.mu.Lock()
@@ -130,7 +128,7 @@ func (s *MemoryStore) SetTokenBucket(key string, state *TokenBucketState, expira
 	return nil
 }
 
-// GetLeakyBucket retrieves the current state of the leaky bucket.
+// GetLeakyBucket retrieves the leaky bucket state.
 func (s *MemoryStore) GetLeakyBucket(key string) (*LeakyBucketState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -142,14 +140,12 @@ func (s *MemoryStore) GetLeakyBucket(key string) (*LeakyBucketState, error) {
 	return state, nil
 }
 
-// SetLeakyBucket updates the state of the leaky bucket.
+// SetLeakyBucket sets the leaky bucket state and expiration.
 func (s *MemoryStore) SetLeakyBucket(key string, state *LeakyBucketState, expiration time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.leakyBuckets[key] = state
-
-	// Set up a timer to delete the key after expiration
 	go func() {
 		time.Sleep(expiration)
 		s.mu.Lock()

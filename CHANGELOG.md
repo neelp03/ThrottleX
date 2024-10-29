@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [v1.0.0-rc2] - 2024-10-29
+## [v1.0.0-rc2] - 2024-10-30
 ### Added
 - **Leaky Bucket Algorithm**: Introduced the Leaky Bucket rate-limiting algorithm to handle high-throughput scenarios, allowing requests to leak at a fixed rate.
 - **Concurrency Control**: Added a concurrency limiter for the Leaky Bucket, preventing overloads by limiting the number of concurrent requests.

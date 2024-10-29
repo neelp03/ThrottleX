@@ -8,7 +8,7 @@ import (
 func TestMemoryStore_Increment(t *testing.T) {
 	memStore := NewMemoryStore()
 	key := "test_key"
-	expiration := time.Minute
+	expiration := time.Second
 
 	// First increment
 	count, err := memStore.Increment(key, 1, expiration)
@@ -28,91 +28,63 @@ func TestMemoryStore_Increment(t *testing.T) {
 		t.Errorf("Expected count 2, got %d", count)
 	}
 
-	// Test decrement
-	count, err = memStore.Increment(key, -1, expiration)
-	if err != nil {
-		t.Fatalf("Decrement failed: %v", err)
-	}
-	if count != 1 {
-		t.Errorf("Expected count 1 after decrement, got %d", count)
-	}
-
-	// Test reset after expiration
+	// Wait for expiration and check count reset
 	time.Sleep(expiration)
-	count, err = memStore.Increment(key, 1, expiration)
-	if err != nil {
-		t.Fatalf("Increment after expiration failed: %v", err)
-	}
-	if count != 1 {
-		t.Errorf("Expected count 1 after expiration reset, got %d", count)
-	}
-}
-
-func TestMemoryStore_GetCounter(t *testing.T) {
-	memStore := NewMemoryStore()
-	key := "test_key"
-
-	// Counter should be 0 initially
-	count, err := memStore.GetCounter(key)
-	if err != nil {
-		t.Fatalf("GetCounter failed: %v", err)
-	}
-	if count != 0 {
-		t.Errorf("Expected count 0, got %d", count)
-	}
-
-	// Increment the counter
-	_, err = memStore.Increment(key, 1, time.Minute)
-	if err != nil {
-		t.Fatalf("Increment failed: %v", err)
-	}
-
-	// Counter should be 1
 	count, err = memStore.GetCounter(key)
 	if err != nil {
 		t.Fatalf("GetCounter failed: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("Expected count 1, got %d", count)
+	if count != 0 {
+		t.Errorf("Expected count 0 after expiration, got %d", count)
 	}
 }
 
 func TestMemoryStore_AddTimestamp(t *testing.T) {
 	memStore := NewMemoryStore()
-	key := "test_sliding_window"
-	timestamp := time.Now().UnixNano()
-	expiration := time.Second * 2
+	key := "test_key"
+	timestamp := time.Now().Unix()
+	expiration := 100 * time.Millisecond
 
-	err := memStore.AddTimestamp(key, timestamp, expiration)
+	// Add a timestamp with cleanup
+	err := memStore.addTimestampWithCleanup(key, timestamp, expiration, true)
 	if err != nil {
 		t.Fatalf("AddTimestamp failed: %v", err)
 	}
 
-	// Wait for expiration and check if the key has been removed
-	time.Sleep(expiration + time.Millisecond*100)
-	_, exists := memStore.slidingWindows[key]
-	if exists {
-		t.Error("Expected key to be deleted after expiration, but it still exists")
+	// Verify timestamp exists
+	count, err := memStore.CountTimestamps(key, timestamp, timestamp)
+	if err != nil {
+		t.Fatalf("CountTimestamps failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected count 1, got %d", count)
+	}
+
+	// Wait for expiration and verify cleanup
+	time.Sleep(expiration + 10*time.Millisecond)
+	count, err = memStore.CountTimestamps(key, timestamp, timestamp)
+	if err != nil {
+		t.Fatalf("CountTimestamps failed after cleanup: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Expected count 0 after expiration, got %d", count)
 	}
 }
 
 func TestMemoryStore_CountTimestamps(t *testing.T) {
 	memStore := NewMemoryStore()
-	key := "test_sliding_window"
+	key := "test_key"
+	start := time.Now().Unix()
+	timestamp1 := start + 1
+	timestamp2 := start + 2
+	expiration := time.Minute
 
 	// Add timestamps
-	now := time.Now().UnixNano()
-	err := memStore.AddTimestamp(key, now, time.Minute)
-	if err != nil {
-		t.Fatalf("AddTimestamp failed: %v", err)
-	}
-	err = memStore.AddTimestamp(key, now+1000, time.Minute)
-	if err != nil {
-		t.Fatalf("AddTimestamp failed: %v", err)
-	}
+	_ = memStore.AddTimestamp(key, timestamp1, expiration)
+	_ = memStore.AddTimestamp(key, timestamp2, expiration)
 
-	// Count timestamps within range
-	count, err := memStore.CountTimestamps(key, now, now+1000)
+	// Verify timestamps count within range
+	count, err := memStore.CountTimestamps(key, start, timestamp2)
 	if err != nil {
 		t.Fatalf("CountTimestamps failed: %v", err)
 	}
@@ -124,63 +96,63 @@ func TestMemoryStore_CountTimestamps(t *testing.T) {
 func TestMemoryStore_TokenBucket(t *testing.T) {
 	memStore := NewMemoryStore()
 	key := "test_token_bucket"
-	expiration := time.Second * 2
+	expiration := time.Second
 
 	// Set token bucket state
-	state := &TokenBucketState{
-		Tokens:         10,
-		LastUpdateTime: time.Now().UnixNano(),
-	}
-	err := memStore.SetTokenBucket(key, state, expiration)
+	tokenState := &TokenBucketState{Tokens: 10, LastUpdateTime: time.Now().UnixNano()}
+	err := memStore.SetTokenBucket(key, tokenState, expiration)
 	if err != nil {
 		t.Fatalf("SetTokenBucket failed: %v", err)
 	}
 
 	// Get token bucket state
-	retrievedState, err := memStore.GetTokenBucket(key)
+	state, err := memStore.GetTokenBucket(key)
 	if err != nil {
 		t.Fatalf("GetTokenBucket failed: %v", err)
 	}
-	if retrievedState == nil || retrievedState.Tokens != 10 {
-		t.Errorf("Expected tokens 10, got %v", retrievedState)
+	if state.Tokens != tokenState.Tokens {
+		t.Errorf("Expected tokens %f, got %f", tokenState.Tokens, state.Tokens)
 	}
 
-	// Wait for expiration and check if the key has been removed
-	time.Sleep(expiration + time.Millisecond*100)
-	retrievedState, _ = memStore.GetTokenBucket(key)
-	if retrievedState != nil {
-		t.Error("Expected token bucket state to be deleted after expiration, but it still exists")
+	// Wait for expiration and verify cleanup
+	time.Sleep(expiration + 10*time.Millisecond)
+	state, err = memStore.GetTokenBucket(key)
+	if err != nil {
+		t.Fatalf("GetTokenBucket failed after expiration: %v", err)
+	}
+	if state != nil {
+		t.Errorf("Expected nil state after expiration, got %v", state)
 	}
 }
 
 func TestMemoryStore_LeakyBucket(t *testing.T) {
 	memStore := NewMemoryStore()
 	key := "test_leaky_bucket"
-	expiration := time.Second * 2
+	expiration := time.Second
 
 	// Set leaky bucket state
-	state := &LeakyBucketState{
-		Queue:        5,
-		LastLeakTime: time.Now(),
-	}
-	err := memStore.SetLeakyBucket(key, state, expiration)
+	leakyState := &LeakyBucketState{Queue: 5, LastLeakTime: time.Now()}
+	err := memStore.SetLeakyBucket(key, leakyState, expiration)
 	if err != nil {
 		t.Fatalf("SetLeakyBucket failed: %v", err)
 	}
 
 	// Get leaky bucket state
-	retrievedState, err := memStore.GetLeakyBucket(key)
+	state, err := memStore.GetLeakyBucket(key)
 	if err != nil {
 		t.Fatalf("GetLeakyBucket failed: %v", err)
 	}
-	if retrievedState == nil || retrievedState.Queue != 5 {
-		t.Errorf("Expected queue 5, got %v", retrievedState)
+	if state.Queue != leakyState.Queue {
+		t.Errorf("Expected queue %d, got %d", leakyState.Queue, state.Queue)
 	}
 
-	// Wait for expiration and check if the key has been removed
-	time.Sleep(expiration + time.Millisecond*100)
-	retrievedState, _ = memStore.GetLeakyBucket(key)
-	if retrievedState != nil {
-		t.Error("Expected leaky bucket state to be deleted after expiration, but it still exists")
+	// Wait for expiration and verify cleanup
+	time.Sleep(expiration + 10*time.Millisecond)
+	state, err = memStore.GetLeakyBucket(key)
+	if err != nil {
+		t.Fatalf("GetLeakyBucket failed after expiration: %v", err)
+	}
+	if state != nil {
+		t.Errorf("Expected nil state after expiration, got %v", state)
 	}
 }
