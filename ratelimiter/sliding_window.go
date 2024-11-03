@@ -54,7 +54,6 @@ func (l *SlidingWindowLimiter) getMutex(key string) *keyMutex {
 
 // Allow checks whether a request associated with the given key is allowed.
 func (l *SlidingWindowLimiter) Allow(key string) (bool, error) {
-	// Input validation
 	if err := validateKey(key); err != nil {
 		return false, err
 	}
@@ -67,20 +66,22 @@ func (l *SlidingWindowLimiter) Allow(key string) (bool, error) {
 	now := time.Now().UnixNano()
 	windowStart := now - l.window.Nanoseconds()
 
-	// Add the current timestamp to the list of timestamps for this key
-	err := l.store.AddTimestamp(key, now, l.window)
-	if err != nil {
-		return false, err
-	}
-
-	// Count the number of timestamps within the window
 	count, err := l.store.CountTimestamps(key, windowStart, now)
 	if err != nil {
 		return false, err
 	}
 
-	allowed := count <= int64(l.limit)
-	return allowed, nil
+	allowed := count < int64(l.limit)
+	if !allowed {
+		return false, nil
+	}
+
+	err = l.store.AddTimestamp(key, now, l.window)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // startMutexCleanup runs a background goroutine to clean up unused mutexes.
