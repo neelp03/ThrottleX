@@ -12,3 +12,8 @@ require (
 	github.com/go-redis/redis/v8 v8.11.5
 	golang.org/x/sys v0.24.0 // indirect
 )
+
+retract (
+	v1.0.1
+	v1.0.0
+)
