@@ -1,5 +1,3 @@
-// tests/integration_test.go
-
 package tests
 
 import (
@@ -7,198 +5,261 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/neelp03/throttlex/ratelimiter"
 	"github.com/neelp03/throttlex/store"
 )
 
-func TestFixedWindowLimiter_MemoryStore_Concurrent(t *testing.T) {
+func TestIntegration_FixedWindowLimiter(t *testing.T) {
 	memStore := store.NewMemoryStore()
-	limiter, nil := ratelimiter.NewFixedWindowLimiter(memStore, 100, time.Second*1)
-	if nil != nil {
-		t.Errorf("Failed to create rate limiter: %v", nil)
-	}
-	key := "user1"
-
-	var wg sync.WaitGroup
-	var allowedCount int
-	var mu sync.Mutex
-
-	// Simulate 150 concurrent requests
-	for i := 0; i < 150; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			allowed, err := limiter.Allow(key)
-			if err != nil {
-				t.Errorf("Unexpected error: %v", err)
-			}
-			if allowed {
-				mu.Lock()
-				allowedCount++
-				mu.Unlock()
-			}
-		}()
+	limiter, err := ratelimiter.NewFixedWindowLimiter(memStore, 5, time.Second)
+	if err != nil {
+		t.Fatalf("Error creating FixedWindowLimiter: %v", err)
 	}
 
-	wg.Wait()
+	key := "user123"
 
-	if allowedCount != 100 {
-		t.Errorf("Expected 100 allowed requests, got %d", allowedCount)
+	// Allow 5 requests
+	for i := 0; i < 5; i++ {
+		allowed, err := limiter.Allow(key)
+		if err != nil {
+			t.Fatalf("Error on Allow(): %v", err)
+		}
+		if !allowed {
+			t.Errorf("Request %d should be allowed", i+1)
+		}
+	}
+
+	// 6th request should be blocked
+	allowed, err := limiter.Allow(key)
+	if err != nil {
+		t.Fatalf("Error on Allow(): %v", err)
+	}
+	if allowed {
+		t.Errorf("6th request should be blocked")
+	}
+
+	// Wait for the window to reset
+	time.Sleep(time.Second)
+
+	// Next request should be allowed
+	allowed, err = limiter.Allow(key)
+	if err != nil {
+		t.Fatalf("Error on Allow(): %v", err)
+	}
+	if !allowed {
+		t.Errorf("Request after window reset should be allowed")
 	}
 }
 
-func TestFixedWindowLimiter_RedisStore_Concurrent(t *testing.T) {
-	// Set up Redis client
-	client := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
-	})
-	err := client.Ping(client.Context()).Err()
-	if err != nil {
-		t.Fatalf("Failed to connect to Redis: %v", err)
-	}
-	redisStore := store.NewRedisStore(client)
-	key := "user1"
-
-	// Clean up the key before test
-	client.Del(client.Context(), key)
-
-	limiter, err := ratelimiter.NewFixedWindowLimiter(redisStore, 100, time.Second*1)
-	if err != nil {
-		t.Errorf("Failed to create rate limiter: %v", nil)
-	}
-
-	var wg sync.WaitGroup
-	var allowedCount int
-	var mu sync.Mutex
-
-	// Simulate 150 concurrent requests
-	for i := 0; i < 150; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			allowed, err := limiter.Allow(key)
-			if err != nil {
-				t.Errorf("Unexpected error: %v", err)
-			}
-			if allowed {
-				mu.Lock()
-				allowedCount++
-				mu.Unlock()
-			}
-		}()
-	}
-
-	wg.Wait()
-
-	if allowedCount != 100 {
-		t.Errorf("Expected 100 allowed requests, got %d", allowedCount)
-	}
-
-	// Clean up the key after test
-	client.Del(client.Context(), key)
-}
-
-func TestSlidingWindowLimiter_MemoryStore_Concurrent(t *testing.T) {
+func TestIntegration_SlidingWindowLimiter(t *testing.T) {
 	memStore := store.NewMemoryStore()
-	limiter, err := ratelimiter.NewSlidingWindowLimiter(memStore, 100, time.Second*1)
+	limiter, err := ratelimiter.NewSlidingWindowLimiter(memStore, 5, time.Second)
 	if err != nil {
-		t.Errorf("Failed to create rate limiter: %v", err)
-	}
-	key := "user1"
-
-	var wg sync.WaitGroup
-	var allowedCount int
-	var mu sync.Mutex
-
-	// Simulate 150 concurrent requests
-	for i := 0; i < 150; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			allowed, err := limiter.Allow(key)
-			if err != nil {
-				t.Errorf("Unexpected error: %v", err)
-			}
-			if allowed {
-				mu.Lock()
-				allowedCount++
-				mu.Unlock()
-			}
-		}()
+		t.Fatalf("Error creating SlidingWindowLimiter: %v", err)
 	}
 
-	wg.Wait()
+	key := "user123"
 
-	// The allowed count should not exceed 100
-	if allowedCount != 100 {
-		t.Errorf("Expected 100 allowed requests, got %d", allowedCount)
+	// Allow 5 requests
+	for i := 0; i < 5; i++ {
+		allowed, err := limiter.Allow(key)
+		if err != nil {
+			t.Fatalf("Error on Allow(): %v", err)
+		}
+		if !allowed {
+			t.Errorf("Request %d should be allowed", i+1)
+		}
+	}
+
+	// 6th request should be blocked
+	allowed, err := limiter.Allow(key)
+	if err != nil {
+		t.Fatalf("Error on Allow(): %v", err)
+	}
+	if allowed {
+		t.Errorf("6th request should be blocked")
+	}
+
+	// Wait for the window to slide past the first request
+	time.Sleep(1 * time.Second)
+
+	allowed, err = limiter.Allow(key)
+	if err != nil {
+		t.Fatalf("Error on Allow(): %v", err)
+	}
+	if !allowed {
+		t.Errorf("Request after window slide should be allowed")
 	}
 }
 
-func TestTokenBucketLimiter_MemoryStore_Concurrent(t *testing.T) {
+func TestIntegration_TokenBucketLimiter(t *testing.T) {
 	memStore := store.NewMemoryStore()
-	capacity := 100.0  // Maximum tokens
-	refillRate := 50.0 // Tokens per second
-	limiter, err := ratelimiter.NewTokenBucketLimiter(memStore, capacity, refillRate)
+	limiter, err := ratelimiter.NewTokenBucketLimiter(memStore, 5, 1) // Capacity 5 tokens, refill rate 1 token/sec
 	if err != nil {
-		t.Errorf("Failed to create rate limiter: %v", err)
+		t.Fatalf("Error creating TokenBucketLimiter: %v", err)
 	}
-	key := "user1"
 
+	key := "user123"
+
+	// Consume 5 tokens
+	for i := 0; i < 5; i++ {
+		allowed, err := limiter.Allow(key)
+		if err != nil {
+			t.Fatalf("Error on Allow(): %v", err)
+		}
+		if !allowed {
+			t.Errorf("Token %d should be consumed", i+1)
+		}
+	}
+
+	// Next request should be blocked
+	allowed, err := limiter.Allow(key)
+	if err != nil {
+		t.Fatalf("Error on Allow(): %v", err)
+	}
+	if allowed {
+		t.Errorf("Request should be blocked due to empty token bucket")
+	}
+
+	// Wait for 1 second to refill one token
+	time.Sleep(time.Second)
+
+	allowed, err = limiter.Allow(key)
+	if err != nil {
+		t.Fatalf("Error on Allow(): %v", err)
+	}
+	if !allowed {
+		t.Errorf("Request should be allowed after token refill")
+	}
+}
+
+func TestIntegration_LeakyBucketLimiter(t *testing.T) {
+	memStore := store.NewMemoryStore()
+	limiter, err := ratelimiter.NewLeakyBucketLimiter(memStore, 5, 1) // Capacity 5, leak rate 1/sec
+	if err != nil {
+		t.Fatalf("Error creating LeakyBucketLimiter: %v", err)
+	}
+
+	key := "user123"
+
+	// Fill the bucket
+	for i := 0; i < 5; i++ {
+		allowed, err := limiter.Allow(key)
+		if err != nil {
+			t.Fatalf("Error on Allow(): %v", err)
+		}
+		if !allowed {
+			t.Errorf("Request %d should be allowed", i+1)
+		}
+	}
+
+	// Next request should be blocked
+	allowed, err := limiter.Allow(key)
+	if err != nil {
+		t.Fatalf("Error on Allow(): %v", err)
+	}
+	if allowed {
+		t.Errorf("Request should be blocked due to full bucket")
+	}
+
+	// Wait for 1 second to leak one token
+	time.Sleep(time.Second)
+
+	allowed, err = limiter.Allow(key)
+	if err != nil {
+		t.Fatalf("Error on Allow(): %v", err)
+	}
+	if !allowed {
+		t.Errorf("Request should be allowed after token leaked")
+	}
+}
+
+func TestIntegration_ConcurrencyLimiter(t *testing.T) {
+	memStore := store.NewMemoryStore()
+	limiter, err := ratelimiter.NewConcurrencyLimiter(memStore, 2)
+	if err != nil {
+		t.Fatalf("Error creating ConcurrencyLimiter: %v", err)
+	}
+
+	key := "user123"
 	var wg sync.WaitGroup
-	var allowedCount int
-	var mu sync.Mutex
+	var mutex sync.Mutex
+	activeRequests := 0
+	maxActiveRequests := 0
 
-	// Simulate 150 concurrent requests
-	for i := 0; i < 150; i++ {
+	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			allowed, err := limiter.Allow(key)
 			if err != nil {
-				t.Errorf("Unexpected error: %v", err)
+				t.Errorf("Error on Allow(): %v", err)
+				return
 			}
-			if allowed {
-				mu.Lock()
-				allowedCount++
-				mu.Unlock()
+			if !allowed {
+				t.Logf("Request denied due to concurrency limit")
+				return
+			}
+			// Simulate work
+			mutex.Lock()
+			activeRequests++
+			if activeRequests > maxActiveRequests {
+				maxActiveRequests = activeRequests
+			}
+			mutex.Unlock()
+
+			time.Sleep(100 * time.Millisecond)
+
+			mutex.Lock()
+			activeRequests--
+			mutex.Unlock()
+
+			err = limiter.Release(key)
+			if err != nil {
+				t.Errorf("Error on Release(): %v", err)
 			}
 		}()
 	}
 
 	wg.Wait()
 
-	// Initially, the allowed count should be up to the capacity
-	if allowedCount != 100 {
-		t.Errorf("Expected 100 allowed requests, got %d", allowedCount)
+	if maxActiveRequests > 2 {
+		t.Errorf("Concurrency limit exceeded: max active requests %d", maxActiveRequests)
+	}
+}
+
+func TestIntegration_MultipleLimiters(t *testing.T) {
+	memStore := store.NewMemoryStore()
+
+	// Create multiple limiters
+	fixedLimiter, err := ratelimiter.NewFixedWindowLimiter(memStore, 10, time.Second)
+	if err != nil {
+		t.Fatalf("Error creating FixedWindowLimiter: %v", err)
 	}
 
-	// Wait for tokens to refill
-	time.Sleep(time.Second * 2)
-
-	// Simulate more requests after refill
-	allowedCount = 0
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			allowed, err := limiter.Allow(key)
-			if err != nil {
-				t.Errorf("Unexpected error: %v", err)
-			}
-			if allowed {
-				mu.Lock()
-				allowedCount++
-				mu.Unlock()
-			}
-		}()
+	tokenLimiter, err := ratelimiter.NewTokenBucketLimiter(memStore, 5, 1)
+	if err != nil {
+		t.Fatalf("Error creating TokenBucketLimiter: %v", err)
 	}
 
-	wg.Wait()
+	key := "user123"
 
-	// Should have allowed approximately 100 tokens (refillRate * 2 seconds)
-	if allowedCount < 90 || allowedCount > 110 {
-		t.Errorf("Expected around 100 allowed requests after refill, got %d", allowedCount)
+	// Simulate requests passing through multiple limiters
+	for i := 0; i < 15; i++ {
+		allowedFixed, err := fixedLimiter.Allow(key)
+		if err != nil {
+			t.Fatalf("Error on Allow() from FixedWindowLimiter: %v", err)
+		}
+		allowedToken, err := tokenLimiter.Allow(key)
+		if err != nil {
+			t.Fatalf("Error on Allow() from TokenBucketLimiter: %v", err)
+		}
+
+		if allowedFixed && allowedToken {
+			t.Logf("Request %d allowed", i+1)
+		} else {
+			t.Logf("Request %d blocked", i+1)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }

@@ -1,5 +1,3 @@
-// store/redis.go
-
 package store
 
 import (
@@ -12,20 +10,12 @@ import (
 )
 
 // RedisStore is a Redis-based implementation of the Store interface.
-// It allows rate limiters to use Redis for storing rate-limiting data.
-// This implementation supports distributed rate limiting across multiple instances.
 type RedisStore struct {
-	client *redis.Client   // Redis client for connecting to the Redis server
-	ctx    context.Context // Context for Redis operations
+	client *redis.Client
+	ctx    context.Context
 }
 
 // NewRedisStore creates a new RedisStore with the given Redis client.
-//
-// Parameters:
-//   - client: A Redis client instance (*redis.Client) configured with appropriate options
-//
-// Returns:
-//   - A pointer to a RedisStore instance
 func NewRedisStore(client *redis.Client) *RedisStore {
 	return &RedisStore{
 		client: client,
@@ -33,27 +23,21 @@ func NewRedisStore(client *redis.Client) *RedisStore {
 	}
 }
 
-// Increment increments the counter for the given key by 1 in Redis.
-// If the key does not exist, it initializes it with a count of 1 and sets the expiration.
-//
-// Parameters:
-//   - key: The key to increment
-//   - expiration: The duration after which the key should expire
-//
-// Returns:
-//   - count: The new count after incrementing
-//   - err: An error if the operation fails
-func (r *RedisStore) Increment(key string, expiration time.Duration) (int64, error) {
-	// Use a Lua script to ensure atomicity of increment and expiration setting
+// Increment increments the counter for the given key by delta in Redis.
+func (r *RedisStore) Increment(key string, delta int64, expiration time.Duration) (int64, error) {
 	script := redis.NewScript(`
-        local count = redis.call('INCR', KEYS[1])
-        if tonumber(count) == 1 then
-            redis.call('EXPIRE', KEYS[1], ARGV[1])
+        local count = redis.call('INCRBY', KEYS[1], ARGV[1])
+        if tonumber(count) < 0 then
+            redis.call('SET', KEYS[1], 0)
+            count = 0
+        end
+        if tonumber(count) == tonumber(ARGV[1]) then
+            redis.call('EXPIRE', KEYS[1], ARGV[2])
         end
         return count
     `)
 
-	result, err := script.Run(r.ctx, r.client, []string{key}, int64(expiration.Seconds())).Result()
+	result, err := script.Run(r.ctx, r.client, []string{key}, delta, int64(expiration.Seconds())).Result()
 	if err != nil {
 		return 0, err
 	}
@@ -64,18 +48,19 @@ func (r *RedisStore) Increment(key string, expiration time.Duration) (int64, err
 	return count, nil
 }
 
+// GetCounter retrieves the current value of the counter.
+func (r *RedisStore) GetCounter(key string) (int64, error) {
+	count, err := r.client.Get(r.ctx, key).Int64()
+	if err == redis.Nil {
+		return 0, nil
+	} else if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // AddTimestamp adds a timestamp to a sorted set associated with the key.
-// It also removes any timestamps that are outside the window.
-//
-// Parameters:
-//   - key: The key associated with the sorted set
-//   - timestamp: The timestamp to add (in nanoseconds)
-//   - expiration: The duration after which the key should expire
-//
-// Returns:
-//   - err: An error if the operation fails
 func (r *RedisStore) AddTimestamp(key string, timestamp int64, expiration time.Duration) error {
-	// Use ZADD to add the timestamp to the sorted set
 	err := r.client.ZAdd(r.ctx, key, &redis.Z{
 		Score:  float64(timestamp),
 		Member: timestamp,
@@ -94,16 +79,6 @@ func (r *RedisStore) AddTimestamp(key string, timestamp int64, expiration time.D
 }
 
 // CountTimestamps counts the number of timestamps within the given range [start, end].
-// It also removes any timestamps outside the window to keep the sorted set clean.
-//
-// Parameters:
-//   - key: The key associated with the sorted set
-//   - start: The start of the range (inclusive, in nanoseconds)
-//   - end: The end of the range (inclusive, in nanoseconds)
-//
-// Returns:
-//   - count: The number of timestamps within the range
-//   - err: An error if the operation fails
 func (r *RedisStore) CountTimestamps(key string, start int64, end int64) (int64, error) {
 	// Remove timestamps that are older than the start time
 	err := r.client.ZRemRangeByScore(r.ctx, key, "0", fmt.Sprintf("(%d", start)).Err()
@@ -120,13 +95,6 @@ func (r *RedisStore) CountTimestamps(key string, start int64, end int64) (int64,
 }
 
 // GetTokenBucket retrieves the current state of the token bucket.
-//
-// Parameters:
-//   - key: The key associated with the token bucket state
-//
-// Returns:
-//   - state: The TokenBucketState if it exists, or nil if it does not
-//   - err: An error if the operation fails
 func (r *RedisStore) GetTokenBucket(key string) (*TokenBucketState, error) {
 	// Use HGETALL to get all fields in the hash
 	result, err := r.client.HGetAll(r.ctx, key).Result()
@@ -163,19 +131,68 @@ func (r *RedisStore) GetTokenBucket(key string) (*TokenBucketState, error) {
 }
 
 // SetTokenBucket updates the state of the token bucket.
-//
-// Parameters:
-//   - key: The key associated with the token bucket state
-//   - state: The TokenBucketState to set
-//   - expiration: The duration after which the key should expire
-//
-// Returns:
-//   - err: An error if the operation fails
 func (r *RedisStore) SetTokenBucket(key string, state *TokenBucketState, expiration time.Duration) error {
 	// Use HMSET to set multiple fields in the hash
 	err := r.client.HMSet(r.ctx, key, map[string]interface{}{
 		"tokens":      state.Tokens,
 		"last_update": state.LastUpdateTime,
+	}).Err()
+	if err != nil {
+		return err
+	}
+
+	// Set the expiration on the key
+	err = r.client.Expire(r.ctx, key, expiration).Err()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GetLeakyBucket retrieves the current state of the leaky bucket.
+func (r *RedisStore) GetLeakyBucket(key string) (*LeakyBucketState, error) {
+	// Use HGETALL to get all fields in the hash
+	result, err := r.client.HGetAll(r.ctx, key).Result()
+	if err != nil {
+		return nil, err
+	}
+	if len(result) == 0 {
+		// Key does not exist
+		return nil, nil
+	}
+
+	queueStr, ok := result["queue"]
+	if !ok {
+		return nil, fmt.Errorf("queue field missing in Redis hash")
+	}
+	lastLeakTimeStr, ok := result["last_leak_time"]
+	if !ok {
+		return nil, fmt.Errorf("last_leak_time field missing in Redis hash")
+	}
+
+	queue, err := strconv.Atoi(queueStr)
+	if err != nil {
+		return nil, err
+	}
+	lastLeakTimeInt, err := strconv.ParseInt(lastLeakTimeStr, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	lastLeakTime := time.Unix(0, lastLeakTimeInt)
+
+	return &LeakyBucketState{
+		Queue:        queue,
+		LastLeakTime: lastLeakTime,
+	}, nil
+}
+
+// SetLeakyBucket updates the state of the leaky bucket.
+func (r *RedisStore) SetLeakyBucket(key string, state *LeakyBucketState, expiration time.Duration) error {
+	// Use HMSET to set multiple fields in the hash
+	err := r.client.HMSet(r.ctx, key, map[string]interface{}{
+		"queue":          state.Queue,
+		"last_leak_time": state.LastLeakTime.UnixNano(),
 	}).Err()
 	if err != nil {
 		return err

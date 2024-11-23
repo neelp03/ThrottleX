@@ -72,6 +72,11 @@ func (l *TokenBucketLimiter) getMutex(key string) *keyMutex {
 //   - allowed: A boolean indicating whether the request is allowed (true) or should be rate-limited (false)
 //   - err: An error if there was a problem accessing the storage backend
 func (l *TokenBucketLimiter) Allow(key string) (bool, error) {
+	// Input validation
+	if err := validateKey(key); err != nil {
+		return false, err
+	}
+
 	km := l.getMutex(key)
 	km.mu.Lock()
 	defer km.mu.Unlock()
@@ -150,12 +155,4 @@ func (l *TokenBucketLimiter) startMutexCleanup() {
 // StopCleanup stops the mutex cleanup goroutine.
 func (l *TokenBucketLimiter) StopCleanup() {
 	close(l.cleanupStopCh)
-}
-
-// min returns the smaller of two float64 numbers.
-func min(a, b float64) float64 {
-	if a < b {
-		return a
-	}
-	return b
 }

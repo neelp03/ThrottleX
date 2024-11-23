@@ -1,100 +1,110 @@
-
-![image-1000x420 (7)](https://github.com/user-attachments/assets/55970be3-9e23-4613-b7ca-d58f9d73e0ed)
-
----
+# ThrottleX: Scalable Rate Limiting for Go APIs
 
 [![CI](https://github.com/neelp03/throttlex/actions/workflows/ci.yml/badge.svg)](https://github.com/neelp03/throttlex/actions/workflows/ci.yml)
 [![Coverage Status](https://codecov.io/gh/neelp03/throttlex/branch/main/graph/badge.svg)](https://codecov.io/gh/neelp03/throttlex)
 [![Go Report Card](https://goreportcard.com/badge/github.com/neelp03/throttlex?v=1)](https://goreportcard.com/report/github.com/neelp03/throttlex)
 [![GoDoc](https://godoc.org/github.com/neelp03/throttlex?status.svg)](https://godoc.org/github.com/neelp03/throttlex)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![GitHub contributors](https://img.shields.io/github/contributors/neelp03/throttlex.svg)](https://github.com/neelp03/throttlex/graphs/contributors)
-[![GitHub forks](https://img.shields.io/github/forks/neelp03/throttlex.svg?style=social&label=Fork&maxAge=2592000)](https://github.com/neelp03/throttlex/network/members)
-[![GitHub stars](https://img.shields.io/github/stars/neelp03/throttlex.svg?style=social&label=Star&maxAge=2592000)](https://github.com/neelp03/throttlex/stargazers)
-
---- 
-
-## **ThrottleX: Scalable Rate Limiting for Go APIs**
-
-Welcome to ThrottleX, a powerful and flexible rate-limiting library for Go! 🚀
-ThrottleX is designed to provide multiple rate limiting algorithms, easy integration, and scalable storage backends for your APIs.
-
-For complete documentation, examples, and detailed setup instructions, please visit the **[ThrottleX Wiki](https://github.com/neelp03/ThrottleX/wiki)**.
 
 ---
 
-## **Features**
+## **Overview**
 
-- **Multiple Algorithms**:
+ThrottleX is an advanced, flexible rate-limiting library designed to handle high traffic loads across distributed environments. Built in Go, ThrottleX combines multiple rate-limiting algorithms with concurrency control to ensure efficient API request management and system stability.
+
+For more detailed setup instructions and examples, visit the **[ThrottleX Wiki](https://github.com/neelp03/ThrottleX/wiki)**.
+
+---
+
+## **Key Features**
+
+- **Enhanced Rate Limiting Algorithms**:
   - Fixed Window
   - Sliding Window
   - Token Bucket
+  - Leaky Bucket with Concurrency Limiting (new in `v1.0.0-rc2`)
 
-- **Pluggable Storage Backends**:
+- **Multiple Storage Options**:
   - In-Memory Store
-  - Redis Store
+  - Redis Store, optimized for distributed setups
 
-- **Thread-Safe and Efficient**:
-  - Designed for high concurrency and low latency.
-  - Includes mutex cleanup to prevent memory leaks.
+- **Optimized for Performance**:
+  - Concurrency control with goroutines and mutex management.
+  - Customizable request limits, intervals, and policies.
+  - Efficient memory management and optimized Redis configuration.
 
-- **Highly Configurable**:
-  - Customize limits, window sizes, and keys.
-  - Support for dynamic configurations.
-
-- **Future Expansion**:
-  - Upcoming support for additional rate limiting policies like Leaky Bucket, Concurrency Limit, and more.
+- **Real-Time Monitoring**:
+  - Integrated with Prometheus for metrics collection and Grafana for visualization.
 
 ---
 
 ## **Installation**
 
-To install Throttlex, use `go get`:
+Install ThrottleX via `go get`:
 
 ```bash
 go get -u github.com/neelp03/throttlex
 ```
 
-For detailed setup instructions, refer to the **[Installation and Setup Wiki Page](https://github.com/neelp03/ThrottleX/wiki/Installation-and-Setup)**.
+See the **[Installation and Setup Wiki Page](https://github.com/neelp03/ThrottleX/wiki/Installation-and-Setup)** for complete instructions.
 
 ---
 
 ## **Usage**
 
-Import the package into your Go project:
+### Example Initialization
 
 ```go
 import (
     "github.com/neelp03/throttlex/ratelimiter"
     "github.com/neelp03/throttlex/store"
 )
+
+func main() {
+    redisStore := store.NewRedisStore(redisClient)
+    limiter, err := ratelimiter.NewLeakyBucketLimiter(redisStore, 100, time.Second, 5) // Capacity: 100, Leak rate: 1 req/sec, Concurrency: 5
+    if err != nil {
+        log.Fatalf("Failed to initialize rate limiter: %v", err)
+    }
+
+    if allowed, _ := limiter.Allow("client-id"); allowed {
+        // Process request
+    }
+}
 ```
 
-For full examples of integrating ThrottleX with REST, gRPC, and GraphQL APIs, please refer to the **[Examples Wiki Page](https://github.com/neelp03/ThrottleX/wiki/ThrottleX-Examples)**.
+For more example integrations, visit the **[Examples Wiki Page](https://github.com/neelp03/ThrottleX/wiki/ThrottleX-Examples)**.
 
 ---
 
 ## **Rate Limiting Algorithms**
 
-ThrottleX currently supports the following rate limiting algorithms:
+ThrottleX offers the following algorithms to adapt to various rate-limiting needs:
 
-- **Fixed Window Limiter**
-- **Sliding Window Limiter**
-- **Token Bucket Limiter**
+- **Fixed Window Limiter**: Limits requests within set time frames.
+- **Sliding Window Limiter**: Smoothes out request patterns over sliding intervals.
+- **Token Bucket Limiter**: Allows bursts while limiting sustained traffic.
+- **Leaky Bucket Limiter** (new): Controls request processing rate with a concurrency limiter to prevent overloads.
 
-To learn more about these algorithms and how they work, visit the **[Rate Limiting Algorithms Wiki Page](https://github.com/neelp03/ThrottleX/wiki/Rate-Limiting-Algorithms-in-ThrottleX)**.
+For detailed information, see the **[Rate Limiting Algorithms Wiki Page](https://github.com/neelp03/ThrottleX/wiki/Rate-Limiting-Algorithms-in-ThrottleX)**.
+
+---
+
+## **Changelog**
+
+Changes between releases are documented in the `CHANGELOG.md` file. View the **[Changelog](https://github.com/neelp03/ThrottleX/blob/main/CHANGELOG.md)** for a detailed list of updates and bug fixes.
 
 ---
 
 ## **Contributing**
 
-Contributions are welcome! Please follow these steps:
+To contribute:
 
-1. **Fork the Repository**: Click on the "Fork" button at the top.
+1. **Fork the Repository**.
 2. **Clone Your Fork**:
 
    ```bash
-   git clone https://github.com/neelp03/throttlex.git
+   git clone https://github.com/your-username/throttlex.git
    cd throttlex
    ```
 
@@ -104,14 +114,13 @@ Contributions are welcome! Please follow these steps:
    git checkout -b feature/your-feature-name
    ```
 
-4. **Make Changes**: Implement your feature or fix.
-5. **Run Tests**:
+4. **Make Changes and Run Tests**:
 
    ```bash
    go test -race -v ./...
    ```
 
-6. **Commit and Push**:
+5. **Commit and Push**:
 
    ```bash
    git add .
@@ -119,24 +128,22 @@ Contributions are welcome! Please follow these steps:
    git push origin feature/your-feature-name
    ```
 
-7. **Create a Pull Request**: Open a pull request against the `main` branch.
+6. **Create a Pull Request** on the `main` branch.
 
 ---
 
 ## **License**
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
 ## **Acknowledgments**
 
-- Inspired by the need for flexible and efficient rate limiting in Go applications.
-- Thanks to the Go community for their invaluable contributions.
+ThrottleX was created to address the need for flexible, high-performance rate limiting in Go applications. Special thanks to the Go community for their guidance and contributions.
 
 ---
 
 ## **Contact**
 
-For questions or support, please open an issue on the [GitHub repository](https://github.com/neelp03/throttlex/issues).
-
+For questions or support, please open an issue on the **[GitHub repository](https://github.com/neelp03/throttlex/issues)**.
