@@ -1,6 +1,6 @@
 module github.com/neelp03/throttlex
 
-go 1.21
+go 1.24
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -16,4 +16,5 @@ require (
 // new pre-release versions available
 
 retract v1.0.0
+
 retract v1.0.1
