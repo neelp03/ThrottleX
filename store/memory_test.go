@@ -39,6 +39,20 @@ func TestMemoryStore_Increment(t *testing.T) {
 	}
 }
 
+func TestMemoryStore_IncrementNegativeNewKey(t *testing.T) {
+	memStore := NewMemoryStore()
+	key := "new_key"
+	expiration := time.Second
+
+	count, err := memStore.Increment(key, -1, expiration)
+	if err != nil {
+		t.Fatalf("Increment failed: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Expected count 0 for negative increment on new key, got %d", count)
+	}
+}
+
 func TestMemoryStore_AddTimestamp(t *testing.T) {
 	memStore := NewMemoryStore()
 	key := "test_key"
