@@ -36,13 +36,21 @@ func (s *MemoryStore) Increment(key string, delta int64, expiration time.Duratio
 
 	counter, exists := s.counters[key]
 	if !exists || time.Now().After(counter.expiration) {
+		// Start from zero when the counter doesn't exist or has expired
+		newCount := delta
+		if newCount < 0 {
+			newCount = 0
+		}
 		counter = &memoryCounter{
-			count:      delta,
+			count:      newCount,
 			expiration: time.Now().Add(expiration),
 		}
 		s.counters[key] = counter
 	} else {
 		counter.count += delta
+		if counter.count < 0 {
+			counter.count = 0
+		}
 	}
 	return counter.count, nil
 }
